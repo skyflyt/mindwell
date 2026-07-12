@@ -3,23 +3,24 @@ import tempfile
 import unittest
 from pathlib import Path
 
-from loby.config import DEFAULT_CONFIG
-from loby.coordinator import CoordinationError, Coordinator
-from loby.engine import build, chunks_for, frontmatter, intent, retrieve, rrf
-from loby.scaffold import init_vault
-from loby.uncertainty import scan
+from mindwell.config import DEFAULT_CONFIG
+from mindwell.coordinator import CoordinationError, Coordinator
+from mindwell.engine import build, chunks_for, frontmatter, intent, retrieve, rrf
+from mindwell.scaffold import init_vault
+from mindwell.uncertainty import scan
 
 
 class FrameworkTests(unittest.TestCase):
     def test_scaffold_contains_contract_and_config(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            init_vault(vault)
+            init_vault(vault, agent_name="Nova")
             self.assertTrue((vault / "AGENTS.md").exists())
+            self.assertIn("# Nova", (vault / "AGENT.md").read_text())
             self.assertEqual("qwen3-embedding:0.6b",
-                             json.loads((vault / "config/loby.json").read_text())["embedding_model"])
+                             json.loads((vault / "config/mindwell.json").read_text())["embedding_model"])
             self.assertEqual("lexical",
-                             json.loads((vault / "config/loby.json").read_text())["retrieval_provider"])
+                             json.loads((vault / "config/mindwell.json").read_text())["retrieval_provider"])
 
     def test_lexical_setup_indexes_and_retrieves_without_embedding(self):
         with tempfile.TemporaryDirectory() as tmp:

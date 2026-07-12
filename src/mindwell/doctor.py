@@ -14,7 +14,8 @@ def inspect(vault: Path) -> dict:
     checks = {
         "python": {"ok": sys.version_info >= (3, 11), "value": sys.version.split()[0]},
         "vault": {"ok": vault.is_dir(), "value": str(vault)},
-        "config": {"ok": (vault / "config" / "loby.json").exists(),
+        "config": {"ok": ((vault / "config" / "mindwell.json").exists()
+                           or (vault / "config" / "loby.json").exists()),
                    "value": config["retrieval_provider"]},
     }
     try:

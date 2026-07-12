@@ -1,11 +1,19 @@
 # Migrating an existing vault
 
+## From Loby Framework
+
+Mindwell keeps compatibility with vaults created before the project rename. It reads `config/loby.json`, recognizes `LOBY.md` as a core agent file, honors `LOBY_INDEX`, and installs the `loby` command as a temporary alias. New setups use `config/mindwell.json`, `AGENT.md`, `MINDWELL_INDEX`, and the `mindwell` command.
+
+You can keep an existing personal `LOBY.md`. Agent names belong to each vault and do not need to match the framework name.
+
+## From another vault structure
+
 Do not copy your vault into this repository.
 
 1. Back up the existing vault.
-2. Run `loby init` against a new empty folder and inspect the structure.
+2. Run `mindwell init` against a new empty folder and inspect the structure.
 3. Copy only the generic contract/rules you want into the existing vault.
-4. Configure source folders and core/current paths in `config/loby.json`.
+4. Configure source folders and core/current paths in `config/mindwell.json`.
 5. Build the external index.
 6. Create a benchmark with 20–40 durable questions and authoritative source paths.
 7. Compare retrieval before changing agent boot instructions.

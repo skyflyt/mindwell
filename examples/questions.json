@@ -13,7 +13,7 @@
     {
       "id": "procedure",
       "q": "What must happen after a daily note is created?",
-      "expected_sources": ["LOBY.md"]
+      "expected_sources": ["AGENT.md"]
     }
   ]
 }

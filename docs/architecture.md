@@ -1,6 +1,6 @@
 # Architecture
 
-Loby separates records from interpretations.
+Mindwell separates records from interpretations.
 
 1. **Source layer** — dated notes, meetings, projects, people, and captured material.
 2. **Synthesis layer** — linked pages that combine sources without replacing them.

@@ -2,7 +2,7 @@
 
 ## Data boundary
 
-Loby indexes private vault content. The default embedding path is local Ollama. No vault body is sent to an external service by this repository.
+Mindwell indexes private vault content. Lexical retrieval stays local and requires no model. The optional semantic path uses local Ollama. This repository does not send vault content to an external service.
 
 - Keep indexes outside synced folders.
 - Never store credentials in wiki pages or example data.

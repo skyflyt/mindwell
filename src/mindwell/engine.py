@@ -53,7 +53,7 @@ def frontmatter(text: str) -> tuple[dict, str]:
 
 def classify(path: str, meta: dict) -> tuple[str, int]:
     low = path.lower()
-    if path in {"MEMORY.md", "LOBY.md", "USER.md", "wiki/AGENT-WIKI-RULES.md"}:
+    if path in {"MEMORY.md", "AGENT.md", "LOBY.md", "USER.md", "wiki/AGENT-WIKI-RULES.md"}:
         return "core", 5
     if path in {"wiki/now.md", "wiki/action-items.md", "wiki/decisions.md"}:
         return "current", 5
@@ -118,7 +118,7 @@ def embed(config: dict, texts: list[str]):
         import numpy as np
     except ImportError as exc:
         raise RuntimeError(
-            'semantic retrieval needs NumPy; install with pip install "loby-framework[semantic]"'
+            'semantic retrieval needs NumPy; install with pip install "mindwell-framework[semantic]"'
         ) from exc
     request = urllib.request.Request(
         config["ollama_url"].rstrip("/") + "/api/embed",
@@ -173,7 +173,7 @@ def build(vault: Path, rebuild: bool = False) -> dict:
     con.commit()
     return {"files": con.execute("SELECT count(*) FROM meta").fetchone()[0],
             "chunks": con.execute("SELECT count(*) FROM chunks").fetchone()[0],
-            "changed_files": changed, "embedded_chunks": chunk_count,
+            "changed_files": changed, "indexed_chunks": chunk_count,
             "index": str(index_path(vault))}
 
 

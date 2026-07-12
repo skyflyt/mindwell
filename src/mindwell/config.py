@@ -17,14 +17,16 @@ DEFAULT_CONFIG = {
         "deep": {"top_k": 10, "chunks": 6, "budget_chars": 16000}
     },
     "exclude_dirs": [".git", ".obsidian", ".trash", "_lint", "node_modules", "__pycache__"],
-    "core_paths": ["MEMORY.md", "LOBY.md", "USER.md", "wiki/AGENT-WIKI-RULES.md"],
+    "core_paths": ["MEMORY.md", "AGENT.md", "USER.md", "wiki/AGENT-WIKI-RULES.md"],
     "current_paths": ["wiki/now.md", "wiki/action-items.md", "wiki/decisions.md"]
 }
 
 
 def load_config(vault: Path) -> dict:
     config = json.loads(json.dumps(DEFAULT_CONFIG))
-    path = vault / "config" / "loby.json"
+    path = vault / "config" / "mindwell.json"
+    if not path.exists():
+        path = vault / "config" / "loby.json"
     if path.exists():
         supplied = json.loads(path.read_text(encoding="utf-8"))
         for key, value in supplied.items():
@@ -36,13 +38,13 @@ def load_config(vault: Path) -> dict:
 
 
 def index_path(vault: Path) -> Path:
-    override = os.environ.get("LOBY_INDEX")
+    override = os.environ.get("MINDWELL_INDEX") or os.environ.get("LOBY_INDEX")
     if override:
         return Path(override)
     key = __import__("hashlib").sha256(str(vault.resolve()).encode()).hexdigest()[:16]
     if os.name == "nt":
-        root = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "loby"
+        root = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "mindwell"
     else:
-        root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "loby"
+        root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "mindwell"
     root.mkdir(parents=True, exist_ok=True)
     return root / f"{key}.db"
