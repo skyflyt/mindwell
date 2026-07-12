@@ -1,0 +1,19 @@
+{
+  "questions": [
+    {
+      "id": "project-owner",
+      "q": "Who owns the current observability migration?",
+      "expected_sources": ["wiki/projects/observability-migration.md"]
+    },
+    {
+      "id": "historical-decision",
+      "q": "Which completed project replaced the legacy alerting service?",
+      "expected_sources": ["wiki/projects/legacy-alerting-replacement.md"]
+    },
+    {
+      "id": "procedure",
+      "q": "What must happen after a daily note is created?",
+      "expected_sources": ["LOBY.md"]
+    }
+  ]
+}
