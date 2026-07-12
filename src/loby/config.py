@@ -5,6 +5,7 @@ import os
 from pathlib import Path
 
 DEFAULT_CONFIG = {
+    "retrieval_provider": "lexical",
     "embedding_model": "qwen3-embedding:0.6b",
     "ollama_url": "http://localhost:11434",
     "chunk_target_chars": 2000,

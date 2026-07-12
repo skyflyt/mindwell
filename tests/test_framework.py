@@ -5,7 +5,7 @@ from pathlib import Path
 
 from loby.config import DEFAULT_CONFIG
 from loby.coordinator import CoordinationError, Coordinator
-from loby.engine import chunks_for, frontmatter, intent, rrf
+from loby.engine import build, chunks_for, frontmatter, intent, retrieve, rrf
 from loby.scaffold import init_vault
 from loby.uncertainty import scan
 
@@ -18,6 +18,20 @@ class FrameworkTests(unittest.TestCase):
             self.assertTrue((vault / "AGENTS.md").exists())
             self.assertEqual("qwen3-embedding:0.6b",
                              json.loads((vault / "config/loby.json").read_text())["embedding_model"])
+            self.assertEqual("lexical",
+                             json.loads((vault / "config/loby.json").read_text())["retrieval_provider"])
+
+    def test_lexical_setup_indexes_and_retrieves_without_embedding(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp); init_vault(vault)
+            project = vault / "wiki" / "projects" / "atlas.md"
+            project.parent.mkdir(parents=True, exist_ok=True)
+            project.write_text("# Atlas migration\n\nMorgan Reed owns the Atlas migration.")
+            stats = build(vault, rebuild=True)
+            result = retrieve(vault, "Who owns the Atlas migration?")
+            self.assertGreater(stats["chunks"], 0)
+            self.assertEqual("lexical", result["provider"])
+            self.assertIn("wiki/projects/atlas.md", [item["path"] for item in result["results"]])
 
     def test_chunking_preserves_source_path(self):
         with tempfile.TemporaryDirectory() as tmp:

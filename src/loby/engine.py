@@ -9,8 +9,6 @@ import urllib.request
 from dataclasses import dataclass
 from pathlib import Path
 
-import numpy as np
-
 from .config import index_path, load_config
 
 
@@ -115,7 +113,13 @@ def chunks_for(vault: Path, path: Path, text: str, config: dict) -> list[Chunk]:
     return result
 
 
-def embed(config: dict, texts: list[str]) -> list[np.ndarray]:
+def embed(config: dict, texts: list[str]):
+    try:
+        import numpy as np
+    except ImportError as exc:
+        raise RuntimeError(
+            'semantic retrieval needs NumPy; install with pip install "loby-framework[semantic]"'
+        ) from exc
     request = urllib.request.Request(
         config["ollama_url"].rstrip("/") + "/api/embed",
         data=json.dumps({"model": config["embedding_model"], "input": texts}).encode(),
@@ -127,9 +131,11 @@ def embed(config: dict, texts: list[str]) -> list[np.ndarray]:
 
 def build(vault: Path, rebuild: bool = False) -> dict:
     config, con = load_config(vault), connect(vault)
+    index_model = ("lexical" if config["retrieval_provider"] == "lexical"
+                   else f"ollama:{config['embedding_model']}")
     if rebuild:
         con.execute("DELETE FROM fts"); con.execute("DELETE FROM chunks"); con.execute("DELETE FROM meta")
-    known = {p: sha for p, sha in con.execute("SELECT path,sha256 FROM meta")}
+    known = {p: (sha, model) for p, sha, model in con.execute("SELECT path,sha256,model FROM meta")}
     seen, changed, chunk_count = set(), 0, 0
     for path in vault.rglob("*.md"):
         rel = path.relative_to(vault).as_posix()
@@ -138,22 +144,29 @@ def build(vault: Path, rebuild: bool = False) -> dict:
         seen.add(rel)
         text = path.read_text(encoding="utf-8", errors="replace")
         digest = hashlib.sha256(text.encode()).hexdigest()
-        if known.get(rel) == digest:
+        if known.get(rel) == (digest, index_model):
             continue
         note_chunks = chunks_for(vault, path, text, config)
-        vectors = []
-        for start in range(0, len(note_chunks), 16):
-            vectors.extend(embed(config, [c.text for c in note_chunks[start:start + 16]]))
+        vectors = [None] * len(note_chunks)
+        if config["retrieval_provider"] == "ollama":
+            vectors = []
+            for start in range(0, len(note_chunks), 16):
+                vectors.extend(embed(config, [c.text for c in note_chunks[start:start + 16]]))
         meta, _ = frontmatter(text); source_class, authority = classify(rel, meta)
         con.execute("DELETE FROM fts WHERE path=?", (rel,)); con.execute("DELETE FROM chunks WHERE path=?", (rel,))
         for chunk, vector in zip(note_chunks, vectors):
-            vector /= np.linalg.norm(vector) + 1e-9
+            if vector is not None:
+                import numpy as np
+                vector /= np.linalg.norm(vector) + 1e-9
+                dim, blob = vector.size, vector.tobytes()
+            else:
+                dim, blob = 0, None
             con.execute("INSERT INTO chunks VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
                         (chunk.id, rel, chunk.ordinal, chunk.heading, chunk.body, chunk.prefix,
                          source_class, meta.get("status", ""), meta.get("updated", ""), authority,
-                         vector.size, vector.tobytes()))
+                         dim, blob))
             con.execute("INSERT INTO fts VALUES (?,?,?,?)", (chunk.id, rel, chunk.heading, chunk.text))
-        con.execute("INSERT OR REPLACE INTO meta VALUES (?,?,?)", (rel, digest, config["embedding_model"]))
+        con.execute("INSERT OR REPLACE INTO meta VALUES (?,?,?)", (rel, digest, index_model))
         con.commit(); changed += 1; chunk_count += len(note_chunks)
     for rel in set(known) - seen:
         con.execute("DELETE FROM fts WHERE path=?", (rel,)); con.execute("DELETE FROM chunks WHERE path=?", (rel,)); con.execute("DELETE FROM meta WHERE path=?", (rel,))
@@ -186,12 +199,16 @@ def retrieve(vault: Path, query: str, mode: str = "standard") -> dict:
     words = [w for w in re.findall(r"[A-Za-z0-9_.-]{3,}", query)][:12]
     expression = " OR ".join(f'"{w}"' for w in words)
     lexical = [r[0] for r in con.execute("SELECT id FROM fts WHERE fts MATCH ? ORDER BY bm25(fts) LIMIT 100", (expression,))]
-    rows = con.execute("SELECT id,vec FROM chunks").fetchall()
-    q = embed(config, ["Instruct: retrieve relevant notes\nQuery: " + query])[0]
-    q /= np.linalg.norm(q) + 1e-9
-    matrix = np.vstack([np.frombuffer(row[1], dtype=np.float32) for row in rows])
-    semantic = [rows[i][0] for i in np.argsort(-(matrix @ q))[:100]]
-    scores, query_intent = rrf([lexical, semantic]), intent(query)
+    rankings = [lexical]
+    if config["retrieval_provider"] == "ollama":
+        import numpy as np
+        rows = con.execute("SELECT id,vec FROM chunks WHERE vec IS NOT NULL").fetchall()
+        if rows:
+            q = embed(config, ["Instruct: retrieve relevant notes\nQuery: " + query])[0]
+            q /= np.linalg.norm(q) + 1e-9
+            matrix = np.vstack([np.frombuffer(row[1], dtype=np.float32) for row in rows])
+            rankings.append([rows[i][0] for i in np.argsort(-(matrix @ q))[:100]])
+    scores, query_intent = rrf(rankings), intent(query)
     ranked = []
     for cid, base in scores.items():
         row = con.execute("SELECT path,heading,body,prefix,source_class,status,updated,authority FROM chunks WHERE id=?", (cid,)).fetchone()
@@ -217,6 +234,6 @@ def retrieve(vault: Path, query: str, mode: str = "standard") -> dict:
         manifest.append({"path": row[0], "chunk_id": cid, "score": round(score, 6),
                          "source_class": row[4], "authority": row[7], "chars": len(block)})
     body = "\n\n".join(context)
-    return {"mode": mode, "query": query, "context": body,
+    return {"mode": mode, "provider": config["retrieval_provider"], "query": query, "context": body,
             "context_chars": len(body), "estimated_tokens": math.ceil(len(body) / 4),
             "results": manifest}
