@@ -16,6 +16,20 @@ your notes ──► preserved sources ──► cited synthesis ──► curre
 
 Mindwell works across agent harnesses because the durable knowledge lives in files rather than one chat product. Lexical retrieval runs on an ordinary laptop. Ollama adds semantic retrieval when the machine can support it.
 
+## Contents
+
+- [Why Mindwell is different](#why-it-is-different)
+- [Choose an installation level](#choose-an-installation-level)
+- [Check prerequisites](#check-prerequisites)
+- [Restricted or standard-user accounts](#restricted-or-standard-user-accounts)
+- [Level 1: Standard laptop](#level-1-standard-laptop)
+- [Level 2: Enhanced local with Ollama](#level-2-enhanced-local-with-ollama)
+- [Level 3: Add Mindwell to an existing vault](#level-3-add-mindwell-to-an-existing-vault)
+- [Upgrade an earlier second brain](#upgrade-an-earlier-second-brain)
+- [Context modes](#context-modes)
+- [Vault layers](#vault-layers)
+- [Commands](#commands)
+
 ## Why it is different
 
 - **Sources stay sources.** Daily notes, projects, meetings, and clippings are never rewritten to fit the wiki.
@@ -169,6 +183,36 @@ Add Mindwell from https://github.com/skyflyt/mindwell to my existing Markdown or
 Replace both placeholders before sending the prompt. Use `lexical` for any laptop and `ollama` only when the machine already supports Level 2.
 
 See [BOOTSTRAP.md](BOOTSTRAP.md) for shorter prompt variants and setup details.
+
+## Upgrade an earlier second brain
+
+Use this workflow if you already followed an earlier second-brain prompt or created a vault before adopting Mindwell. Keep the current vault and treat it as a Level 3 migration.
+
+The migration should preserve:
+
+- existing notes and folder structure;
+- the agent's current name, identity, and useful rules;
+- existing `LOBY.md` and `config/loby.json` files, which Mindwell still supports.
+
+Back up the vault first. Clone Mindwell into a separate development folder, inspect the vault without writing, and approve a file-by-file migration plan before the agent changes anything.
+
+### Fresh-agent upgrade prompt
+
+```text
+Upgrade my existing second-brain vault at <VAULT_PATH> to Mindwell using https://github.com/skyflyt/mindwell.
+
+Treat this as a non-destructive migration. Read Mindwell's AGENTS.md, README.md, SECURITY.md, and docs/migration.md before acting.
+
+First, confirm that I have a current backup. Inspect my existing vault without changing it. Identify my current agent name, identity file, instructions, memory files, source folders, wiki structure, and configuration. Preserve my existing agent name and useful rules; do not replace them with generic Mindwell templates. Show me a concise migration plan listing every file you propose to add or modify, then wait for my approval before writing.
+
+After approval, install Mindwell in a separate user-writable development folder. Use a project-local virtual environment without requiring activation or administrator rights. Keep my existing notes and folder structure. Add only missing Mindwell components. Use lexical retrieval unless I approve Ollama. Keep LOBY.md and config/loby.json if they already exist because Mindwell supports them. Do not move, rename, delete, summarize, or rewrite existing source notes.
+
+Run mindwell doctor, build the external index, and test at least three grounded questions whose answers exist in my vault. Report the retrieval results, files added or changed, index location, compatibility files retained, and rollback steps.
+
+Stop and report the blocker if company policy prevents Python, GitHub access, virtual environments, or writing to the selected folders.
+```
+
+If you received an earlier prompt but never created a vault, use Level 1 instead.
 
 ## Context modes
 
