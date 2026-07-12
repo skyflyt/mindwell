@@ -8,6 +8,12 @@ Set up Mindwell from https://github.com/skyflyt/mindwell. Ask whether I want to 
 Clone the repository into a normal development folder, read its root AGENTS.md and BOOTSTRAP.md, then follow the fresh-setup workflow. Use zero-dependency lexical retrieval unless I explicitly request Ollama. Do not install a model runtime, enable a cloud service, or modify an existing vault without asking. Run the doctor, build the index, verify one grounded retrieval, and report exactly what you created.
 ```
 
+For a standard or managed user account:
+
+```text
+Set up Mindwell from https://github.com/skyflyt/mindwell without administrator rights. Detect Windows or macOS, read AGENTS.md, and use only user-writable folders. Do not change execution policy or security controls. Use a project virtual environment without activating it. If Git is unavailable, use GitHub's source ZIP only when downloads are allowed. Stop and report any policy blocker. Use lexical retrieval, run the doctor and index, and verify one grounded query.
+```
+
 Include the destination when you know it:
 
 ```text

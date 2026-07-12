@@ -60,6 +60,46 @@ ollama list
 
 Do not ask an agent to install Ollama unless you want local semantic retrieval. Level 1 has no model download, NumPy dependency, API key, or cloud service.
 
+### Restricted or standard-user accounts
+
+Level 1 does not require administrator rights when Python 3.11+ and the repository are available. Mindwell writes to the repository, the selected vault, and a cache inside the current user's profile.
+
+On a managed computer, do not change execution policy, disable security controls, or install blocked software. Stop and report the missing prerequisite if company policy blocks Python, GitHub, downloaded programs, or virtual environments.
+
+You do not need to activate a virtual environment. Direct commands work in PowerShell, Command Prompt, macOS Terminal, and agent shells.
+
+**Windows PowerShell:**
+
+```powershell
+py -3.11 -m venv .venv
+.venv\Scripts\python.exe -m pip install -e .
+.venv\Scripts\mindwell.exe init "$HOME\Documents\MySecondBrain" --agent-name "Nova"
+.venv\Scripts\mindwell.exe doctor "$HOME\Documents\MySecondBrain"
+.venv\Scripts\mindwell.exe index "$HOME\Documents\MySecondBrain"
+```
+
+**Windows Command Prompt:**
+
+```batch
+py -3.11 -m venv .venv
+.venv\Scripts\python.exe -m pip install -e .
+.venv\Scripts\mindwell.exe init "%USERPROFILE%\Documents\MySecondBrain" --agent-name "Nova"
+.venv\Scripts\mindwell.exe doctor "%USERPROFILE%\Documents\MySecondBrain"
+.venv\Scripts\mindwell.exe index "%USERPROFILE%\Documents\MySecondBrain"
+```
+
+**macOS:**
+
+```bash
+python3 -m venv .venv
+.venv/bin/python -m pip install -e .
+.venv/bin/mindwell init ~/Documents/MySecondBrain --agent-name "Nova"
+.venv/bin/mindwell doctor ~/Documents/MySecondBrain
+.venv/bin/mindwell index ~/Documents/MySecondBrain
+```
+
+If Git is unavailable but GitHub downloads are allowed, download the repository ZIP from the **Code** menu, extract it to a writable folder, open a terminal in that folder, and continue with the commands above. Keep the extracted folder because the editable installation points to it.
+
 ## Level 1: Standard laptop
 
 This is the default and recommended setup.
@@ -91,7 +131,7 @@ The agent name is optional. Omit `--agent-name` and edit `AGENT.md` later if you
 Paste this into a new coding-agent session:
 
 ```text
-Set up Mindwell from https://github.com/skyflyt/mindwell at Level 1 for a standard laptop. Read the repository's AGENTS.md, README.md, BOOTSTRAP.md, and SECURITY.md before making changes. Ask what I want to name my agent; skip naming if I have no preference. Check Git and Python prerequisites, clone the repository, create a project-local virtual environment, and install the base package. Create a new vault at <VAULT_PATH> with lexical retrieval. Do not install Ollama, add a cloud service, or send vault content outside this machine. Run mindwell doctor, build the index, and verify a grounded standard-mode query. Report the chosen agent name, retrieval provider, files created, index location, test result, and any manual next steps. If <VAULT_PATH> already contains files, stop and ask before modifying it.
+Set up Mindwell from https://github.com/skyflyt/mindwell at Level 1 for a standard laptop. Read the repository's AGENTS.md, README.md, BOOTSTRAP.md, and SECURITY.md before making changes. Ask what I want to name my agent; skip naming if I have no preference. Detect the operating system and check Python 3.11+, Git, filesystem access, and security restrictions. Work entirely in user-writable folders. Do not request administrator rights, change PowerShell execution policy, disable security controls, or install blocked prerequisites. Clone the repository, or use GitHub's source ZIP if Git is unavailable and downloads are permitted. Create a project-local virtual environment and call its Python and Mindwell executables directly without requiring activation. Create a new vault at <VAULT_PATH> with lexical retrieval. Do not install Ollama, add a cloud service, or send vault content outside this machine. Run mindwell doctor, build the index, and verify a grounded standard-mode query. Report the chosen agent name, operating system, retrieval provider, files created, index location, test result, and any policy or permission blocker. If <VAULT_PATH> already contains files, stop and ask before modifying it.
 ```
 
 Replace `<VAULT_PATH>` with the destination you want, such as `C:\Users\yourname\Documents\MySecondBrain` or `~/Documents/MySecondBrain`.
