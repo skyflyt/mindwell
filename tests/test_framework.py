@@ -5,7 +5,8 @@ from pathlib import Path
 
 from mindwell.config import DEFAULT_CONFIG
 from mindwell.coordinator import CoordinationError, Coordinator
-from mindwell.engine import build, chunks_for, frontmatter, intent, retrieve, rrf
+from mindwell.engine import (assemble_context, build, chunks_for, compact_evidence,
+                             frontmatter, intent, retrieve, rrf)
 from mindwell.scaffold import init_vault
 from mindwell.uncertainty import scan
 
@@ -48,6 +49,30 @@ class FrameworkTests(unittest.TestCase):
 
     def test_intent_distinguishes_history(self):
         self.assertIn("historical", intent("Which completed project did this?"))
+
+    def test_compaction_prefers_query_bearing_evidence(self):
+        text = (("Routine background with no useful owner detail. " * 20) +
+                "\n\nMorgan Reed owns the Atlas migration and approves cutover.\n\n" +
+                ("More unrelated historical background. " * 20))
+        compacted = compact_evidence(text, "Who owns the Atlas migration?", 300)
+        self.assertIn("Morgan Reed owns the Atlas migration", compacted)
+        self.assertLessEqual(len(compacted), 300)
+
+    def test_context_keeps_five_sources_inside_standard_budget(self):
+        selected = []
+        for index in range(5):
+            row = (f"wiki/source-{index}.md", "Current", "relevant fact " * 100,
+                   f"Vault note: wiki/source-{index}.md.", "synthesis", "active",
+                   "2026-07-12", 4)
+            selected.append((.02 - index / 1000, f"chunk-{index}", row))
+        context, manifest = assemble_context(selected, "relevant fact", 2500)
+        self.assertEqual(5, len(manifest))
+        self.assertLessEqual(len(context), 2500)
+        self.assertTrue(all(item["path"] in context for item in manifest))
+
+    def test_optimized_context_mode_defaults(self):
+        self.assertEqual(2500, DEFAULT_CONFIG["context_modes"]["standard"]["budget_chars"])
+        self.assertEqual(5, DEFAULT_CONFIG["context_modes"]["standard"]["chunks"])
 
     def test_uncertainty_parser(self):
         with tempfile.TemporaryDirectory() as tmp:

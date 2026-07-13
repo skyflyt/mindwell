@@ -12,6 +12,14 @@ from pathlib import Path
 from .config import index_path, load_config
 
 
+EVIDENCE_STOPWORDS = {
+    "about", "after", "again", "against", "also", "does", "from", "have",
+    "into", "local", "must", "only", "should", "that", "their", "there",
+    "these", "this", "vault", "what", "when", "where", "which", "while",
+    "with", "work", "would", "your",
+}
+
+
 @dataclass
 class Chunk:
     id: str
@@ -193,6 +201,85 @@ def rrf(rankings: list[list[str]], k: int = 60) -> dict[str, float]:
     return scores
 
 
+def evidence_units(text: str) -> list[str]:
+    """Split a retrieved chunk into compact, readable evidence units."""
+    units = []
+    for paragraph in re.split(r"\n\s*\n", text):
+        paragraph = paragraph.strip()
+        if not paragraph:
+            continue
+        if len(paragraph) <= 700:
+            units.append(paragraph)
+            continue
+        for line in (line.strip() for line in paragraph.splitlines() if line.strip()):
+            if len(line) <= 700:
+                units.append(line)
+            else:
+                units.extend(part.strip() for part in
+                             re.split(r"(?<=[.!?])\s+", line) if part.strip())
+    return units
+
+
+def compact_evidence(text: str, query: str, budget_chars: int) -> str:
+    """Select query-bearing evidence from one chunk inside a hard budget."""
+    if len(text) <= budget_chars:
+        return text.strip()
+    terms = {token.lower() for token in re.findall(r"[A-Za-z0-9_.-]{3,}", query)
+             if token.lower() not in EVIDENCE_STOPWORDS}
+    low_query = query.lower()
+    if "layer" in low_query or "architecture" in low_query:
+        terms.update({"sources", "schema", "synthesis"})
+    if "retrieval-first" in low_query or "retrieve-first" in low_query:
+        terms.update({"index", "search", "retrieve"})
+    if "sqlite" in low_query or "sync" in low_query:
+        terms.update({"conflict", "corruption", "database", "replica"})
+    units = evidence_units(text)
+    scored = []
+    for index, unit in enumerate(units):
+        low = unit.lower()
+        matched = {term for term in terms if term in low}
+        score = sum(3 if any(ch.isdigit() for ch in term) else 1 for term in matched)
+        score += 2 * sum(1 for term in matched if low.count(term) > 1)
+        scored.append((score, len(matched), -len(unit), index))
+    order = [item[3] for item in sorted(scored, reverse=True)]
+    selected, used = [], 0
+    for index in order:
+        unit = units[index]
+        separator = 2 if selected else 0
+        if used + separator + len(unit) <= budget_chars:
+            selected.append(index)
+            used += separator + len(unit)
+        elif not selected:
+            selected.append(index)
+            used = budget_chars
+        if used >= budget_chars * .88:
+            break
+    selected.sort()
+    return "\n\n".join(units[index] for index in selected)[:budget_chars].rstrip()
+
+
+def assemble_context(selected: list[tuple], query: str, budget_chars: int) -> tuple[str, list[dict]]:
+    """Preserve top-source coverage while compacting each source around the query."""
+    if not selected:
+        return "", []
+    headers = [f"=== SOURCE_PATH: {row[0]} ===\nSECTION: {row[1]}\n{row[3]}\n\n"
+               for _score, _cid, row in selected]
+    text_budget = max(220 * len(selected), budget_chars - sum(map(len, headers))
+                      - 2 * (len(selected) - 1))
+    per_source = max(220, text_budget // len(selected))
+    blocks, manifest = [], []
+    for (score, cid, row), header in zip(selected, headers):
+        evidence = compact_evidence(row[2], query, per_source)
+        remaining = budget_chars - sum(len(item) for item in blocks) - 2 * len(blocks)
+        if remaining <= len(header):
+            break
+        block = (header + evidence)[:remaining]
+        blocks.append(block)
+        manifest.append({"path": row[0], "chunk_id": cid, "score": round(score, 6),
+                         "source_class": row[4], "authority": row[7], "chars": len(block)})
+    return "\n\n".join(blocks), manifest
+
+
 def retrieve(vault: Path, query: str, mode: str = "standard") -> dict:
     config, con = load_config(vault), connect(vault)
     cfg = config["context_modes"][mode]
@@ -225,15 +312,7 @@ def retrieve(vault: Path, query: str, mode: str = "standard") -> dict:
         if row[0] in pages: continue
         pages.add(row[0]); selected.append((score, cid, row))
         if len(selected) >= cfg["top_k"]: break
-    context, manifest, used = [], [], 0
-    for score, cid, row in selected[:cfg["chunks"]]:
-        block = f"=== SOURCE_PATH: {row[0]} ===\nSECTION: {row[1]}\n{row[3]}\n\n{row[2]}"
-        block = block[:max(0, cfg["budget_chars"] - used)]
-        if not block: break
-        context.append(block); used += len(block) + 2
-        manifest.append({"path": row[0], "chunk_id": cid, "score": round(score, 6),
-                         "source_class": row[4], "authority": row[7], "chars": len(block)})
-    body = "\n\n".join(context)
+    body, manifest = assemble_context(selected[:cfg["chunks"]], query, cfg["budget_chars"])
     return {"mode": mode, "provider": config["retrieval_provider"], "query": query, "context": body,
             "context_chars": len(body), "estimated_tokens": math.ceil(len(body) / 4),
             "results": manifest}

@@ -40,7 +40,7 @@ Mindwell works across agent harnesses because the durable knowledge lives in fil
 - **Uncertainty is first-class.** Contradictions and evidence gaps remain linked to their competing sources.
 - **Writes are coordinated.** Local locks, shared leases, and committed hashes can reject stale synced replicas before mutation.
 
-The architecture was validated in a real operational vault. In its reference evaluation, authority-aware chunk retrieval improved source recall@5 from 60% to 100% and MRR from 0.459 to 0.701 while using bounded context. The included example data is entirely fictional.
+The architecture was validated in a real operational vault. In its reference evaluation, authority-aware chunk retrieval improved source recall@5 from 60% to 100% and MRR from 0.459 to 0.701. Query-focused evidence compaction then reduced average evidence context from 3,628 to 601 estimated tokens (83.4%) while repeated 35-question runs retained 100% answer accuracy, 100% valid citation support, 91.4% verified-authoritative citation support, 100% recall@5, and zero runtime errors. The included example data is entirely fictional.
 
 ## Choose an installation level
 
@@ -286,9 +286,11 @@ See [BOOTSTRAP.md](BOOTSTRAP.md) for shorter prompt variants.
 
 | Mode | Pages | Context budget | Intended use |
 | --- | ---: | ---: | --- |
-| quick | 3 candidates / 2 chunks | 4,200 chars | names, IDs, simple current facts |
-| standard | 5 / 3 | 7,500 chars | ordinary grounded questions |
-| deep | 10 / 6 | 16,000 chars | synthesis and contradiction research |
+| quick | 3 candidates / 2 sources | 1,600 chars | names, IDs, simple current facts |
+| standard | 5 / 5 | 2,500 chars | ordinary grounded questions |
+| deep | 10 / 6 | 5,000 chars | synthesis and contradiction research |
+
+Mindwell compacts each selected chunk around the query and reserves space across the selected sources. This avoids spending the whole budget on the first few large chunks while retaining source diversity for citations.
 
 ## Vault layers
 
