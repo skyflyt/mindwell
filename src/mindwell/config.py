@@ -12,9 +12,9 @@ DEFAULT_CONFIG = {
     "chunk_max_chars": 2600,
     "chunk_overlap_chars": 300,
     "context_modes": {
-        "quick": {"top_k": 3, "chunks": 2, "budget_chars": 4200},
-        "standard": {"top_k": 5, "chunks": 3, "budget_chars": 7500},
-        "deep": {"top_k": 10, "chunks": 6, "budget_chars": 16000}
+        "quick": {"top_k": 3, "chunks": 2, "budget_chars": 1600},
+        "standard": {"top_k": 5, "chunks": 5, "budget_chars": 2500},
+        "deep": {"top_k": 10, "chunks": 6, "budget_chars": 5000}
     },
     "exclude_dirs": [".git", ".obsidian", ".trash", "_lint", "node_modules", "__pycache__"],
     "core_paths": ["MEMORY.md", "AGENT.md", "USER.md", "wiki/AGENT-WIKI-RULES.md"],
