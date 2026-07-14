@@ -1,5 +1,9 @@
 # Migrating an existing vault
 
+Run `mindwell recommend <vault-path>` after installing the current package. An
+existing non-empty destination is classified as the existing-vault track. Back up the
+vault, review the proposed additions, and approve them before initialization.
+
 ## From Loby Framework
 
 Mindwell keeps compatibility with vaults created before the project rename. It reads `config/loby.json`, recognizes `LOBY.md` as a core agent file, honors `LOBY_INDEX`, and installs the `loby` command as a temporary alias. New setups use `config/mindwell.json`, `AGENT.md`, `MINDWELL_INDEX`, and the `mindwell` command.
