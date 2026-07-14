@@ -17,6 +17,11 @@ Read `BOOTSTRAP.md`, `README.md`, and `SECURITY.md` before running commands. Tre
 9. Verify setup with `mindwell retrieve <vault-path> "What are the rules for maintaining this vault?" --mode standard --explain`.
 10. Report the operating system, provider, files created, index location, verification result, and any policy or permission blocker.
 
+Do not ask users whether they want private external workspaces during ordinary setup,
+and do not add `--private-workspaces` to a recommendation or init command unless the
+user explicitly requests that advanced feature. Its existence in the documentation is
+not consent to enable it.
+
 When the personal-ops profile is selected, open `START-HERE.md` with the user and
 confirm their folder-capable AI workspace has the vault selected. Read the generated
 automation registration guide, show all proposed schedules, and ask before registering

@@ -72,6 +72,29 @@ class FrameworkTests(unittest.TestCase):
             init_vault(vault, profile="personal-ops", automations="core")
             self.assertEqual({"customized": True}, json.loads(plan_path.read_text()))
 
+    def test_private_workspaces_are_optional_and_never_persist_locations(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault, profile="personal-ops", private_workspaces=True)
+            registry = json.loads(
+                (vault / "config/private-workspaces.json").read_text())
+            self.assertFalse(registry["policy"]["persist_locations"])
+            self.assertTrue(registry["policy"]["require_location_each_task"])
+            self.assertEqual([], registry["workspaces"])
+            self.assertTrue(
+                (vault / "recipes/private-external-workspaces.md").exists())
+            self.assertIn("Never store, infer, search for, derive, or reuse",
+                          (vault / "AGENTS.md").read_text())
+            installation = json.loads(
+                (vault / "config/installation.json").read_text())
+            self.assertEqual(["private-workspaces"],
+                             installation["optional_features"])
+
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault, profile="personal-ops")
+            self.assertFalse((vault / "config/private-workspaces.json").exists())
+
     def test_advisor_chooses_personal_ops_for_new_destination(self):
         with tempfile.TemporaryDirectory() as tmp:
             destination = Path(tmp) / "SecondBrain"
@@ -80,6 +103,7 @@ class FrameworkTests(unittest.TestCase):
             self.assertEqual("lexical", advice["recommendation"]["provider"])
             self.assertFalse(advice["recommendation"]["requires_admin"])
             self.assertIn("--profile personal-ops", advice["commands"][0])
+            self.assertNotIn("--private-workspaces", " ".join(advice["commands"]))
 
     def test_advisor_detects_existing_vault(self):
         with tempfile.TemporaryDirectory() as tmp:

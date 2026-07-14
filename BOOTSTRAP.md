@@ -18,6 +18,8 @@ start in a folder-capable AI workspace with the vault selected.
 
 This is the canonical public setup path. The variants below are useful when a machine
 or migration requirement is already known, but ordinary users should not need them.
+Ordinary setup must not ask about or enable private external workspaces. That advanced
+feature is configured only after the user explicitly requests it.
 
 Give a new coding agent the prompt below. The agent can clone this repository, read its setup contract, and build a working vault without prior Mindwell context.
 

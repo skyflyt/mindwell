@@ -19,7 +19,7 @@ def main() -> int:
     parser = argparse.ArgumentParser(prog="mindwell")
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
-    init = commands.add_parser("init"); init.add_argument("vault", type=Path); init.add_argument("--force", action="store_true"); init.add_argument("--agent-name"); init.add_argument("--profile", choices=("basic", "personal-ops"), default="basic"); init.add_argument("--automations", choices=("none", "core"), default="none"); init.add_argument("--timezone", default="local")
+    init = commands.add_parser("init"); init.add_argument("vault", type=Path); init.add_argument("--force", action="store_true"); init.add_argument("--agent-name"); init.add_argument("--profile", choices=("basic", "personal-ops"), default="basic"); init.add_argument("--automations", choices=("none", "core"), default="none"); init.add_argument("--timezone", default="local"); init.add_argument("--private-workspaces", action="store_true")
     index = commands.add_parser("index"); index.add_argument("vault", type=Path); index.add_argument("--rebuild", action="store_true")
     query = commands.add_parser("retrieve"); query.add_argument("vault", type=Path); query.add_argument("query"); query.add_argument("--mode", choices=("quick", "standard", "deep"), default="standard"); query.add_argument("--explain", action="store_true"); query.add_argument("--no-refresh", action="store_true")
     bench = commands.add_parser("benchmark"); bench.add_argument("vault", type=Path); bench.add_argument("questions", type=Path); bench.add_argument("--mode", default="standard")
@@ -32,7 +32,7 @@ def main() -> int:
     if args.command == "init":
         print(json.dumps({"created": [str(p) for p in init_vault(
             args.vault, args.force, args.agent_name, args.profile,
-            args.automations, args.timezone)]}, indent=2))
+            args.automations, args.timezone, args.private_workspaces)]}, indent=2))
     elif args.command == "index":
         print(json.dumps(build(args.vault, args.rebuild), indent=2))
     elif args.command == "retrieve":

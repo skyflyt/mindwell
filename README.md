@@ -56,6 +56,21 @@ The personal-operations profile includes:
 - optional schedules for weekday startup, weekly review, memory maintenance, and
   health checks.
 
+### Advanced opt-in: private external workspaces
+
+This feature is disabled and unmentioned during ordinary setup. Setup agents must not
+ask users about it, recommend it, or enable it unless the user explicitly requests a
+separate boundary for sensitive material.
+
+After that explicit request, add `--private-workspaces` during initialization.
+Mindwell creates an alias-only registry and a handling recipe. Locations are never
+persisted: the user must provide the private workspace location again for every task,
+and its content and durable memory stay outside the main vault and retrieval index.
+
+```powershell
+mindwell init "$HOME\Documents\MySecondBrain" --profile personal-ops --private-workspaces
+```
+
 Mindwell stores its SQLite search index in the current user's cache, outside the
 vault. OneDrive, Dropbox, and iCloud should never sync a live search database.
 
@@ -183,7 +198,7 @@ mindwell index "<VAULT_PATH>" --rebuild
 
 ```text
 mindwell recommend PATH [--prefer-semantic] [--basic]
-mindwell init PATH [--agent-name NAME] [--profile basic|personal-ops] [--automations none|core]
+mindwell init PATH [--agent-name NAME] [--profile basic|personal-ops] [--automations none|core] [--private-workspaces]
 mindwell index PATH [--rebuild]
 mindwell retrieve PATH QUERY [--mode quick|standard|deep] [--explain] [--no-refresh]
 mindwell automations PATH [--bundle core] [--timezone ZONE] [--force]

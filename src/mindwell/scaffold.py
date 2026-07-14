@@ -105,10 +105,70 @@ ambiguous names.
 """,
 }
 
+PRIVATE_WORKSPACE_AGENT_RULES = """
+
+## Private external workspaces
+
+When `config/private-workspaces.json` exists, it records aliases and access policy
+only. Never store, infer, search for, derive, or reuse a private workspace location.
+Require the user to provide the location again in every task that needs access. Keep
+content and durable memory from that workspace inside the private workspace; do not
+copy it into this vault, its index, global memory, logs, or scheduled-task state.
+"""
+
+PRIVATE_WORKSPACE_FILES = {
+    "config/private-workspaces.json": """{
+  "schema_version": 1,
+  "policy": {
+    "persist_locations": false,
+    "require_location_each_task": true,
+    "allow_alias_and_purpose_only": true
+  },
+  "workspaces": []
+}
+""",
+    "recipes/private-external-workspaces.md": """# Recipe: private external workspaces
+
+Use this optional feature for sensitive material that needs a stronger boundary than
+the main Second Brain, such as finances, health records, legal matters, or identity
+documents.
+
+## Register an alias
+
+Add only a non-sensitive alias and purpose to `config/private-workspaces.json`:
+
+```json
+{
+  "name": "Private workspace alias",
+  "purpose": "Short non-sensitive description"
+}
+```
+
+Never add a filesystem location, cloud URL, account identifier, credential, balance,
+record summary, or content from the private workspace to this vault.
+
+## Access
+
+For every task that needs the private workspace:
+
+1. Ask the user to provide its location in that task.
+2. Do not infer, search for, derive, or reuse a location from memory, logs, shell
+   history, recent files, or an earlier conversation.
+3. Read or write only within the user-supplied location and requested scope.
+4. Store durable content and memory inside the private workspace.
+5. Keep only the alias, purpose, and access rule in the main Second Brain.
+6. Do not add the private workspace to Mindwell retrieval or scheduled indexing.
+
+The main vault can know that a private workspace exists without knowing where it is
+or what it contains.
+""",
+}
+
 
 def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
                profile: str = "basic", automations: str = "none",
-               timezone: str = "local") -> list[Path]:
+               timezone: str = "local",
+               private_workspaces: bool = False) -> list[Path]:
     existing_content = vault.exists() and any(vault.iterdir())
     vault.mkdir(parents=True, exist_ok=True)
     created = []
@@ -116,6 +176,9 @@ def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
     files = dict(FILES)
     if profile == "personal-ops":
         files.update(PERSONAL_OPS_FILES)
+    if private_workspaces:
+        files.update(PRIVATE_WORKSPACE_FILES)
+        files["AGENTS.md"] = files["AGENTS.md"] + PRIVATE_WORKSPACE_AGENT_RULES
     files["AGENT.md"] = f"""# {name}\n\nYou are a thoughtful work partner. Preserve sources, cite claims, separate current state from history, and keep private data private. Use quick context for simple facts, standard for ordinary work, and deep only for genuine synthesis.\n"""
     for relative, body in files.items():
         path = vault / relative
@@ -138,6 +201,8 @@ def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
             "automation_bundle": automations,
             "provider": "lexical",
             "setup_track": "existing-vault" if existing_content else profile,
+            "optional_features": (["private-workspaces"]
+                                  if private_workspaces else []),
             "installed_at": datetime.now(dt_timezone.utc).isoformat(),
             "runner": f'"{sys.executable}" -m mindwell.cli',
         }
