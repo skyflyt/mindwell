@@ -67,6 +67,21 @@ Mindwell creates an alias-only registry and a handling recipe. Locations are nev
 persisted: the user must provide the private workspace location again for every task,
 and its content and durable memory stay outside the main vault and retrieval index.
 
+The secure location can use any storage mechanism that appears as an ordinary folder
+after the user unlocks or mounts it. Common choices include:
+
+| Approach | Examples | Operational behavior |
+| --- | --- | --- |
+| Protected cloud folder | [OneDrive Personal Vault](https://support.microsoft.com/en-us/onedrive/how-onedrive-safeguards-your-data-in-the-cloud) | The provider handles additional authentication and automatic locking. |
+| Client-side encrypted directory | [Cryptomator](https://docs.cryptomator.org/security/architecture/) | Unlock the encrypted vault to expose a temporary virtual drive or folder. |
+| Encrypted container or volume | [VeraCrypt](https://veracrypt.io/en/Creating%20New%20Volumes.html), a BitLocker-protected drive, or an encrypted APFS volume | Mount or unlock the volume only when access is needed. |
+| Encrypted device storage | [BitLocker](https://support.microsoft.com/en-us/windows/security/encryption/bitlocker-overview) or [FileVault](https://support.apple.com/guide/mac-help/protect-data-on-your-mac-with-filevault-mh11785/mac) combined with a separate restricted folder | Protects data at rest; access while the device is unlocked still depends on the operating-system account and folder permissions. |
+
+Mindwell treats these choices the same operationally: the user unlocks the secure
+location, supplies its current path for that task, and Mindwell accesses only the
+approved scope without saving the path. Their security guarantees differ, so users
+should choose based on their device, sync, backup, recovery, and threat model.
+
 ```powershell
 mindwell init "$HOME\Documents\MySecondBrain" --profile personal-ops --private-workspaces
 ```
