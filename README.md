@@ -2,323 +2,217 @@
 
 ![Mindwell mascot](assets/mindwell-mascot-concept.png)
 
-**A durable second brain for your personally named AI agent.**
-
-Name your agent anything you like. Mindwell gives that agent a private, portable knowledge system built from ordinary Markdown. It preserves original notes, maintains current understanding with citations, and retrieves bounded context so the agent spends tokens on the work instead of rereading the vault.
+Mindwell gives an AI agent a durable second brain built from ordinary Markdown files.
+Your notes stay readable and portable. Mindwell preserves sources, maintains cited
+synthesis, tracks current state, and retrieves a small amount of relevant context for
+each question.
 
 ```text
 your notes ──► preserved sources ──► cited synthesis ──► current state
                     │                     │                   │
                     └──────── token-budgeted retrieval ◄─────┘
-                                      │
-                              your named AI agent
 ```
 
-Mindwell works across agent harnesses because the durable knowledge lives in files rather than one chat product. Lexical retrieval runs on an ordinary laptop. Ollama adds semantic retrieval when the machine can support it.
+Mindwell works with coding agents and folder-capable AI workspaces. Obsidian is
+optional. Lexical search runs on a standard laptop without an API key or model
+download.
 
-## Contents
+## Fastest setup: give this repository to an agent
 
-- [Why Mindwell is different](#why-it-is-different)
-- [Choose an installation level](#choose-an-installation-level)
-- [Check prerequisites](#check-prerequisites)
-- [Restricted or standard-user accounts](#restricted-or-standard-user-accounts)
-- [Level 1: Standard laptop](#level-1-standard-laptop)
-- [Level 2: Enhanced local with Ollama](#level-2-enhanced-local-with-ollama)
-- [Existing vault: Standard lexical setup](#existing-vault-standard-lexical-setup)
-- [Existing vault: Enhanced Ollama setup](#existing-vault-enhanced-ollama-setup)
-- [Context modes](#context-modes)
-- [Vault layers](#vault-layers)
-- [Commands](#commands)
+Create a new coding-agent task and paste the prompt below. Replace `<VAULT_PATH>` with
+the folder you want to use, such as `C:\Users\yourname\Documents\MySecondBrain` or
+`~/Documents/MySecondBrain`.
 
-## Why it is different
-
-- **Sources stay sources.** Daily notes, projects, meetings, and clippings are never rewritten to fit the wiki.
-- **Synthesis compounds.** Agents maintain a linked wiki with visible citations.
-- **Current truth is explicit.** Current-state pages rank above stale evidence for current questions; historical questions keep historical evidence.
-- **Retrieval is tested.** A known-answer benchmark measures source recall, MRR, context size, latency, answers, and citations separately.
-- **Context has a budget.** Quick, standard, and deep modes prevent accidental whole-vault loading.
-- **Uncertainty is first-class.** Contradictions and evidence gaps remain linked to their competing sources.
-- **Writes are coordinated.** Local locks, shared leases, and committed hashes can reject stale synced replicas before mutation.
-
-The architecture was validated in a real operational vault. In its reference evaluation, authority-aware chunk retrieval improved source recall@5 from 60% to 100% and MRR from 0.459 to 0.701. Query-focused evidence compaction then reduced average evidence context from 3,628 to 601 estimated tokens (83.4%) while repeated 35-question runs retained 100% answer accuracy, 100% valid citation support, 91.4% verified-authoritative citation support, 100% recall@5, and zero runtime errors. The included example data is entirely fictional.
-
-## Choose an installation level
-
-These levels describe how Mindwell is installed. They are separate from the quick, standard, and deep context modes used when retrieving notes.
-
-| Level | Best for | Retrieval | Requirements |
-| --- | --- | --- | --- |
-| 1: Standard laptop | Training, first-time setup, and ordinary laptops | Local lexical search with SQLite FTS5 | Git and Python 3.11+ |
-| 2: Enhanced local | Machines that can run a local embedding model | Lexical and semantic search through Ollama | Level 1 plus Ollama, model storage, and enough memory to run it |
-| 3A: Existing vault, standard | Adding Mindwell to an established vault on an ordinary laptop | Local lexical search | Level 1 plus a current vault backup |
-| 3B: Existing vault, enhanced | Upgrading an established vault to local semantic retrieval | Lexical and semantic search through Ollama | Level 2 plus a current vault backup |
-
-Obsidian is optional. Mindwell works with ordinary Markdown files.
-
-### Check prerequisites
-
-Run these before any level:
-
-```bash
-git --version
-python --version
+```text
+Set up the latest tagged Mindwell release from https://github.com/skyflyt/mindwell at
+<VAULT_PATH>. Read AGENTS.md and BOOTSTRAP.md before acting. Inspect this computer and
+the destination, then choose the appropriate setup track with `mindwell recommend`.
+Use folders owned by my user account. Do not request administrator rights, weaken
+security controls, or modify an existing vault without showing me the proposed
+changes and getting approval. Use local lexical retrieval unless I request semantic
+retrieval. Build the index, run the doctor, verify one grounded query, and show me how
+to open the vault in a folder-capable AI workspace.
 ```
 
-If `python` is not found, try `python3 --version` on macOS or Linux, or `py -3.11 --version` on Windows. Install Python 3.11 or newer before continuing.
+The setup agent handles these decisions:
 
-Level 2 also requires:
+| Destination | Setup track | Retrieval |
+| --- | --- | --- |
+| New folder | Personal operations | Local lexical search |
+| Existing Markdown or Obsidian vault | Non-destructive existing-vault setup | Local lexical search |
+| Custom framework requested by the user | Basic framework | Local lexical search |
 
-```bash
-ollama --version
-ollama list
-```
+The agent enables Ollama semantic retrieval only when you request it and a working
+local Ollama installation is available.
 
-Do not ask an agent to install Ollama unless you want local semantic retrieval. Level 1 has no model download, NumPy dependency, API key, or cloud service.
+## What setup creates
 
-### Restricted or standard-user accounts
+The personal-operations profile includes:
 
-Level 1 does not require administrator rights when Python 3.11+ and the repository are available. Mindwell writes to the repository, the selected vault, and a cache inside the current user's profile.
+- agent, user, memory, and source-preservation rules;
+- daily notes, projects, meetings, people, clippings, weekly reviews, and a cited wiki;
+- a ten-second folder check in `START-HERE.md`;
+- recipes for weekly reports, batch Excel analysis, and content-based PDF splitting;
+- optional schedules for weekday startup, weekly review, memory maintenance, and
+  health checks.
 
-On a managed computer, do not change execution policy, disable security controls, or install blocked software. Stop and report the missing prerequisite if company policy blocks Python, GitHub, downloaded programs, or virtual environments.
+Mindwell stores its SQLite search index in the current user's cache, outside the
+vault. OneDrive, Dropbox, and iCloud should never sync a live search database.
 
-You do not need to activate a virtual environment. Direct commands work in PowerShell, Command Prompt, macOS Terminal, and agent shells.
+## Requirements
 
-**Windows PowerShell:**
+- Python 3.11 or newer
+- SQLite with FTS5, included with standard Python builds
+- Write access to the selected vault and the current user's cache
+- Git or access to the [latest release](https://github.com/skyflyt/mindwell/releases/latest)
+
+Mindwell does not require administrator rights when those prerequisites are already
+available. On a managed computer, do not change execution policy or disable security
+controls. Ask IT to provide a missing or blocked prerequisite.
+
+## Manual setup
+
+Download and extract the latest tagged release, then open a terminal in the extracted
+folder.
+
+### Windows PowerShell
 
 ```powershell
-py -3.11 -m venv .venv
-.venv\Scripts\python.exe -m pip install -e .
-.venv\Scripts\mindwell.exe init "$HOME\Documents\MySecondBrain" --agent-name "Nova"
-.venv\Scripts\mindwell.exe doctor "$HOME\Documents\MySecondBrain"
+py -3 -m venv .venv
+.venv\Scripts\python.exe -m pip install .
+.venv\Scripts\mindwell.exe recommend "$HOME\Documents\MySecondBrain"
+.venv\Scripts\mindwell.exe init "$HOME\Documents\MySecondBrain" --profile personal-ops --automations core --timezone local
 .venv\Scripts\mindwell.exe index "$HOME\Documents\MySecondBrain"
+.venv\Scripts\mindwell.exe doctor "$HOME\Documents\MySecondBrain"
 ```
 
-**Windows Command Prompt:**
-
-```batch
-py -3.11 -m venv .venv
-.venv\Scripts\python.exe -m pip install -e .
-.venv\Scripts\mindwell.exe init "%USERPROFILE%\Documents\MySecondBrain" --agent-name "Nova"
-.venv\Scripts\mindwell.exe doctor "%USERPROFILE%\Documents\MySecondBrain"
-.venv\Scripts\mindwell.exe index "%USERPROFILE%\Documents\MySecondBrain"
-```
-
-**macOS:**
+### macOS or Linux
 
 ```bash
 python3 -m venv .venv
-.venv/bin/python -m pip install -e .
-.venv/bin/mindwell init ~/Documents/MySecondBrain --agent-name "Nova"
-.venv/bin/mindwell doctor ~/Documents/MySecondBrain
+.venv/bin/python -m pip install .
+.venv/bin/mindwell recommend ~/Documents/MySecondBrain
+.venv/bin/mindwell init ~/Documents/MySecondBrain --profile personal-ops --automations core --timezone local
 .venv/bin/mindwell index ~/Documents/MySecondBrain
+.venv/bin/mindwell doctor ~/Documents/MySecondBrain
 ```
 
-If Git is unavailable but GitHub downloads are allowed, download the repository ZIP from the **Code** menu, extract it to a writable folder, open a terminal in that folder, and continue with the commands above. Keep the extracted folder because the editable installation points to it.
+The recommendation command prints an exact plan. Review that plan instead of copying
+the example `init` command when the destination already contains files.
 
-## Level 1: Standard laptop
+You do not need to activate the virtual environment. Call its executables directly.
+After a normal installation, Mindwell does not depend on the extracted source folder.
 
-This is the default and recommended setup.
+## Existing vaults
+
+Back up an existing vault before adding Mindwell. The setup agent must inspect the
+current identity files, memory, folder structure, and rules before it writes. It must
+show the proposed additions and preserve source notes.
+
+Start with:
 
 ```bash
-git clone https://github.com/skyflyt/mindwell
-cd mindwell
-python -m venv .venv
-source .venv/bin/activate
-python -m pip install -e .
-mindwell init ~/MySecondBrain --agent-name "Nova"
-mindwell doctor ~/MySecondBrain
-mindwell index ~/MySecondBrain
-mindwell retrieve ~/MySecondBrain "What is the current project risk?" --mode standard --explain
+mindwell recommend "<VAULT_PATH>"
 ```
 
-On Windows PowerShell, create and activate the environment with:
+Mindwell recognizes compatibility files from earlier versions, including `LOBY.md`,
+`config/loby.json`, and `LOBY_INDEX`. See [the migration guide](docs/migration.md) for
+the full non-destructive workflow.
 
-```powershell
-py -3.11 -m venv .venv
-.venv\Scripts\Activate.ps1
-python -m pip install -e .
-```
+## Scheduled work
 
-The agent name is optional. Omit `--agent-name` and edit `AGENT.md` later if you prefer. Open the generated folder as an Obsidian vault if desired, then customize `AGENT.md`, `USER.md`, and `config/mindwell.json`.
+Mindwell writes proposed schedules to `automations/plan.json`. That file remains the
+source of truth. A scheduler-capable agent reads the plan, shows you each task, and
+asks before registering anything.
 
-### Fresh-agent prompt for Level 1
+Scheduled prompts create notes or drafts inside the vault. They do not send messages
+or change external systems. Each recurring prompt creates a run stamp before work so
+a retry does not duplicate the output.
 
-Paste this into a new coding-agent session:
+Open `automations/REGISTER-WITH-YOUR-AGENT.md` after setup to review and register the
+plan. Products without a scheduler can run the same prompts by hand.
 
-```text
-Set up Mindwell from https://github.com/skyflyt/mindwell at Level 1 for a standard laptop. Read the repository's AGENTS.md, README.md, BOOTSTRAP.md, and SECURITY.md before making changes. Ask what I want to name my agent; skip naming if I have no preference. Detect the operating system and check Python 3.11+, Git, filesystem access, and security restrictions. Work entirely in user-writable folders. Do not request administrator rights, change PowerShell execution policy, disable security controls, or install blocked prerequisites. Clone the repository, or use GitHub's source ZIP if Git is unavailable and downloads are permitted. Create a project-local virtual environment and call its Python and Mindwell executables directly without requiring activation. Create a new vault at <VAULT_PATH> with lexical retrieval. Do not install Ollama, add a cloud service, or send vault content outside this machine. Run mindwell doctor, build the index, and verify a grounded standard-mode query. Report the chosen agent name, operating system, retrieval provider, files created, index location, test result, and any policy or permission blocker. If <VAULT_PATH> already contains files, stop and ask before modifying it.
-```
+## Retrieval
 
-Replace `<VAULT_PATH>` with the destination you want, such as `C:\Users\yourname\Documents\MySecondBrain` or `~/Documents/MySecondBrain`.
+Mindwell refreshes the local index before each search. New and edited notes appear in
+results without a separate maintenance command.
 
-## Level 2: Enhanced local with Ollama
+| Mode | Sources | Context budget | Use |
+| --- | ---: | ---: | --- |
+| quick | 2 | 1,600 characters | IDs, names, and simple facts |
+| standard | 5 | 2,500 characters | Ordinary grounded work |
+| deep | 6 | 5,000 characters | Synthesis and contradiction research |
 
-Start with Level 1, then add the optional semantic dependency and local embedding model:
+Example:
 
 ```bash
-python -m pip install -e ".[semantic]"
+mindwell retrieve "<VAULT_PATH>" "What are the current project risks?" --mode standard --explain
+```
+
+### Optional Ollama retrieval
+
+Ollama adds local semantic search. Install it only when the computer has enough memory
+and storage and local policy allows it.
+
+```bash
+python -m pip install ".[semantic]"
 ollama pull qwen3-embedding:0.6b
-mindwell configure ~/MySecondBrain --provider ollama
-mindwell doctor ~/MySecondBrain
-mindwell index ~/MySecondBrain --rebuild
+mindwell configure "<VAULT_PATH>" --provider ollama
+mindwell index "<VAULT_PATH>" --rebuild
+mindwell doctor "<VAULT_PATH>"
 ```
 
-Switch back at any time with `mindwell configure ~/MySecondBrain --provider lexical` followed by a rebuild.
-
-### Fresh-agent prompt for Level 2
-
-```text
-Set up Mindwell from https://github.com/skyflyt/mindwell at Level 2 with local Ollama semantic retrieval. Read the repository's AGENTS.md, README.md, BOOTSTRAP.md, and SECURITY.md first. Ask what I want to name my agent; skip naming if I have no preference. Check Git, Python 3.11+, Ollama, available models, and the target path. Clone the repository, create a project-local virtual environment, and install the semantic extra. Create a new vault at <VAULT_PATH>. Use qwen3-embedding:0.6b unless a compatible embedding model is already configured. Ask before installing Ollama or downloading a model. Never configure a remote embedding service or send vault content outside this machine. Run mindwell doctor, configure the ollama provider, rebuild the index, and verify a grounded standard-mode query. If Ollama cannot pass the checks, restore the lexical provider and explain why. Report the chosen agent name, provider, model, files created, index location, test result, and manual next steps.
-```
-
-## Existing vault: Standard lexical setup
-
-Choose this path for an existing Markdown vault, an existing Obsidian vault, or a vault created from an earlier second-brain prompt. It runs on an ordinary laptop without Ollama.
-
-Preserve the current agent name, identity files, notes, rules, and folder structure. Mindwell supports existing `LOBY.md` and `config/loby.json` files, so renaming them is optional.
-
-### Standard prerequisites
-
-1. Create a current backup of the vault.
-2. Confirm that Git and Python 3.11+ are available.
-3. Confirm write access to a development folder, the vault, and the current user's cache.
-4. Review [docs/migration.md](docs/migration.md).
-5. Inspect the vault and approve a file-by-file plan before the agent writes.
-
-```bash
-git --version
-python --version
-git clone https://github.com/skyflyt/mindwell
-cd mindwell
-python -m venv .venv
-```
-
-Install from the virtual environment without requiring activation:
-
-```powershell
-# Windows
-.venv\Scripts\python.exe -m pip install -e .
-.venv\Scripts\mindwell.exe doctor "<VAULT_PATH>"
-.venv\Scripts\mindwell.exe index "<VAULT_PATH>"
-```
-
-```bash
-# macOS
-.venv/bin/python -m pip install -e .
-.venv/bin/mindwell doctor "<VAULT_PATH>"
-.venv/bin/mindwell index "<VAULT_PATH>"
-```
-
-### Fresh-agent prompt for an existing standard vault
-
-```text
-Upgrade my existing second-brain vault at <VAULT_PATH> to the standard lexical Mindwell setup using https://github.com/skyflyt/mindwell.
-
-Read Mindwell's AGENTS.md, README.md, SECURITY.md, and docs/migration.md before acting. Confirm that I have a current backup. Detect Windows or macOS and check the Level 1 prerequisites: Git, Python 3.11+, GitHub access, virtual-environment support, and write access to user folders. Do not request administrator rights, change execution policy, disable security controls, install Ollama, or configure a cloud service. Use GitHub's source ZIP if Git is unavailable and downloads are permitted.
-
-Inspect my vault without changing it. Identify the current agent name, identity file, instructions, memory files, source folders, wiki structure, and configuration. Preserve the existing agent identity and useful rules. Keep LOBY.md and config/loby.json if they exist. Do not move, rename, delete, summarize, or rewrite source notes. Show me every proposed file addition or modification and wait for my approval.
-
-After approval, install Mindwell in a separate user-writable folder with a project-local virtual environment. Call the environment's executables directly without activation. Add only missing framework components and use lexical retrieval. Run mindwell doctor, build the external index, and test at least three grounded questions whose answers exist in the vault. Report the operating system, prerequisites, files changed, compatibility files retained, index location, retrieval results, rollback steps, and any policy blocker.
-```
-
-## Existing vault: Enhanced Ollama setup
-
-Choose this path to add local semantic retrieval to any existing vault, including an earlier second brain that has never used Ollama. Complete the standard prerequisites above, then check the Level 2 requirements.
-
-### Enhanced prerequisites
-
-1. Confirm that the computer has enough memory and storage for Ollama and an embedding model.
-2. Check whether Ollama is already installed and whether a compatible embedding model is available.
-3. Ask before installing Ollama or downloading a model.
-4. Stop if company policy blocks Ollama, background model services, or downloads.
-
-```bash
-ollama --version
-ollama list
-```
-
-After Mindwell's base installation succeeds:
-
-```powershell
-# Windows
-.venv\Scripts\python.exe -m pip install -e ".[semantic]"
-ollama pull qwen3-embedding:0.6b
-.venv\Scripts\mindwell.exe configure "<VAULT_PATH>" --provider ollama
-.venv\Scripts\mindwell.exe doctor "<VAULT_PATH>"
-.venv\Scripts\mindwell.exe index "<VAULT_PATH>" --rebuild
-```
-
-```bash
-# macOS
-.venv/bin/python -m pip install -e ".[semantic]"
-ollama pull qwen3-embedding:0.6b
-.venv/bin/mindwell configure "<VAULT_PATH>" --provider ollama
-.venv/bin/mindwell doctor "<VAULT_PATH>"
-.venv/bin/mindwell index "<VAULT_PATH>" --rebuild
-```
-
-If Ollama fails, restore lexical retrieval with the matching virtual-environment path:
+Return to lexical search at any time:
 
 ```bash
 mindwell configure "<VAULT_PATH>" --provider lexical
 mindwell index "<VAULT_PATH>" --rebuild
 ```
 
-### Fresh-agent prompt for an existing vault with Ollama
+## How Mindwell protects source material
 
-```text
-Upgrade my existing second-brain vault at <VAULT_PATH> to Mindwell with local Ollama semantic retrieval using https://github.com/skyflyt/mindwell. This vault may have no previous Ollama setup.
-
-Read Mindwell's AGENTS.md, README.md, SECURITY.md, and docs/migration.md before acting. Confirm that I have a current backup. Detect Windows or macOS. Check all Level 1 prerequisites first: Git, Python 3.11+, GitHub access, virtual-environment support, and write access to user folders. Then check the Level 2 prerequisites: available memory and storage, Ollama installation, Ollama service access, and installed embedding models. Explain any missing prerequisite. Ask before installing Ollama or downloading qwen3-embedding:0.6b. Do not request administrator rights, bypass company policy, change execution policy, disable security controls, configure a remote embedding service, or send vault content outside this machine.
-
-Inspect my vault without changing it. Identify the current agent name, identity file, instructions, memory files, source folders, wiki structure, and configuration. Preserve the existing agent identity and useful rules. Keep LOBY.md and config/loby.json if they exist. Do not move, rename, delete, summarize, or rewrite source notes. Show me every proposed file addition or modification, Ollama installation action, and model download, then wait for my approval.
-
-After approval, install Mindwell in a separate user-writable folder with a project-local virtual environment. Call the environment's executables directly without activation. Add only missing framework components. Install the semantic dependency, prepare Ollama and the approved embedding model, configure the ollama provider, run mindwell doctor, and rebuild the external index. Test at least three grounded questions and report the operating system, prerequisites, model, files changed, compatibility files retained, index location, retrieval results, rollback steps, and any policy blocker.
-
-If Ollama cannot pass the checks, restore lexical retrieval, rebuild the index, verify that lexical retrieval works, and explain the failed prerequisite.
-```
-
-If you received an earlier prompt but never created a vault, use Level 1 or Level 2 instead.
-
-See [BOOTSTRAP.md](BOOTSTRAP.md) for shorter prompt variants.
-
-## Context modes
-
-| Mode | Pages | Context budget | Intended use |
-| --- | ---: | ---: | --- |
-| quick | 3 candidates / 2 sources | 1,600 chars | names, IDs, simple current facts |
-| standard | 5 / 5 | 2,500 chars | ordinary grounded questions |
-| deep | 10 / 6 | 5,000 chars | synthesis and contradiction research |
-
-Mindwell compacts each selected chunk around the query and reserves space across the selected sources. This avoids spending the whole budget on the first few large chunks while retaining source diversity for citations.
-
-## Vault layers
-
-```text
-Sources: daily/ projects/ meetings/ people/ clippings/
-                    ↓ ingest and reconcile
-Synthesis: wiki/topics/ wiki/entities/ wiki/projects/ wiki/questions/
-                    ↓ route by intent and authority
-Current state: wiki/now.md wiki/action-items.md wiki/decisions.md
-```
+- Agents do not rewrite source notes to fit the wiki.
+- Wiki claims retain visible source paths.
+- Current-state pages rank above old evidence for current questions.
+- Contradictions stay open until evidence resolves them.
+- Local locks, shared leases, and committed hashes reject stale synced replicas.
+- Agents treat note, email, document, and web content as untrusted data.
+- External actions and schedule registration require approval.
 
 ## Commands
 
-```bash
-mindwell init PATH [--agent-name NAME]
-mindwell index PATH [--rebuild]    # incremental chunk/FTS/vector index
-mindwell retrieve PATH QUERY       # ranked chunks + manifest
-mindwell benchmark PATH tests.json # source-level retrieval regression test
-mindwell contradictions PATH       # compile structured uncertainty registry
-mindwell doctor PATH               # check Python, FTS5, provider, and Ollama
+```text
+mindwell recommend PATH [--prefer-semantic] [--basic]
+mindwell init PATH [--agent-name NAME] [--profile basic|personal-ops] [--automations none|core]
+mindwell index PATH [--rebuild]
+mindwell retrieve PATH QUERY [--mode quick|standard|deep] [--explain] [--no-refresh]
+mindwell automations PATH [--bundle core] [--timezone ZONE] [--force]
+mindwell doctor PATH
 mindwell configure PATH --provider lexical|ollama
+mindwell contradictions PATH
+mindwell benchmark PATH tests.json
+mindwell --version
 ```
 
-Indexes live outside the vault by default; never sync a live SQLite database through OneDrive, Dropbox, or iCloud.
+## Releases and updates
 
-## Project status
+Install the newest tagged [GitHub release](https://github.com/skyflyt/mindwell/releases).
+Each release includes a wheel and source archive. The `main` branch contains
+development work.
 
-This repository is the clean-room, generic framework. It contains no source notes or Git history from the private vault that inspired it. See [docs/architecture.md](docs/architecture.md), [docs/migration.md](docs/migration.md), and [SECURITY.md](SECURITY.md).
+`mindwell --version` reports the installed package version.
+`config/installation.json` records the version, profile, provider, and setup track for
+each vault. `mindwell doctor` warns when the package and vault versions do not match.
+
+Maintainers can use the [release checklist](docs/releasing.md).
+
+## More documentation
+
+- [Fresh-agent setup](BOOTSTRAP.md)
+- [Architecture](docs/architecture.md)
+- [Existing-vault migration](docs/migration.md)
+- [Security](SECURITY.md)
+- [Contributing](CONTRIBUTING.md)
 
 ## License
 

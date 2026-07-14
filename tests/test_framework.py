@@ -1,6 +1,7 @@
 import json
 import tempfile
 import unittest
+import tomllib
 from pathlib import Path
 
 from mindwell.config import DEFAULT_CONFIG
@@ -9,9 +10,16 @@ from mindwell.engine import (assemble_context, build, chunks_for, compact_eviden
                              frontmatter, intent, retrieve, rrf)
 from mindwell.scaffold import init_vault
 from mindwell.uncertainty import scan
+from mindwell.advisor import recommend
+from mindwell import __version__
 
 
 class FrameworkTests(unittest.TestCase):
+    def test_runtime_and_package_versions_match(self):
+        project = Path(__file__).parents[1]
+        package_version = tomllib.loads((project / "pyproject.toml").read_text())["project"]["version"]
+        self.assertEqual(package_version, __version__)
+
     def test_scaffold_contains_contract_and_config(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
@@ -22,6 +30,8 @@ class FrameworkTests(unittest.TestCase):
                              json.loads((vault / "config/mindwell.json").read_text())["embedding_model"])
             self.assertEqual("lexical",
                              json.loads((vault / "config/mindwell.json").read_text())["retrieval_provider"])
+            installation = json.loads((vault / "config/installation.json").read_text())
+            self.assertEqual(__version__, installation["mindwell_version"])
 
     def test_lexical_setup_indexes_and_retrieves_without_embedding(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -34,6 +44,51 @@ class FrameworkTests(unittest.TestCase):
             self.assertGreater(stats["chunks"], 0)
             self.assertEqual("lexical", result["provider"])
             self.assertIn("wiki/projects/atlas.md", [item["path"] for item in result["results"]])
+
+    def test_retrieve_refreshes_changed_notes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp); init_vault(vault)
+            build(vault, rebuild=True)
+            note = vault / "projects" / "new-work.md"
+            note.write_text("# Cedar\n\nAvery owns the Cedar forecast.")
+            result = retrieve(vault, "Who owns the Cedar forecast?")
+            self.assertEqual(1, result["index_refresh"]["changed_files"])
+            self.assertIn("projects/new-work.md", [item["path"] for item in result["results"]])
+
+    def test_personal_ops_profile_has_habits_recipes_and_automation_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault, profile="personal-ops", automations="core",
+                       timezone="America/Los_Angeles")
+            self.assertIn("folder-capable", (vault / "START-HERE.md").read_text())
+            self.assertTrue((vault / "recipes/batch-excel-analysis.md").exists())
+            plan = json.loads((vault / "automations/plan.json").read_text())
+            self.assertEqual("America/Los_Angeles", plan["timezone"])
+            self.assertEqual(4, len(plan["tasks"]))
+            self.assertEqual("never_without_confirmation",
+                             plan["safety"]["external_sends"])
+            plan_path = vault / "automations/plan.json"
+            plan_path.write_text('{"customized": true}\n')
+            init_vault(vault, profile="personal-ops", automations="core")
+            self.assertEqual({"customized": True}, json.loads(plan_path.read_text()))
+
+    def test_advisor_chooses_personal_ops_for_new_destination(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            destination = Path(tmp) / "SecondBrain"
+            advice = recommend(destination)
+            self.assertEqual("personal-ops", advice["recommendation"]["track"])
+            self.assertEqual("lexical", advice["recommendation"]["provider"])
+            self.assertFalse(advice["recommendation"]["requires_admin"])
+            self.assertIn("--profile personal-ops", advice["commands"][0])
+
+    def test_advisor_detects_existing_vault(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            (vault / "existing.md").write_text("# Existing")
+            advice = recommend(vault)
+            self.assertEqual("existing-vault", advice["recommendation"]["track"])
+            self.assertTrue(advice["checks"]["destination"]["has_markdown"])
+            self.assertTrue(advice["warnings"])
 
     def test_chunking_preserves_source_path(self):
         with tempfile.TemporaryDirectory() as tmp:

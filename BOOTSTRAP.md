@@ -1,5 +1,24 @@
 # Fresh-agent setup
 
+## Recommended single prompt
+
+Give a fresh agent only the destination and this request:
+
+```text
+Set up the latest tagged Mindwell release from https://github.com/skyflyt/mindwell at
+<VAULT_PATH>. Read the repository's AGENTS.md and follow it. Inspect the machine and
+destination, choose the appropriate setup track, explain the choice briefly, and
+complete setup. Do not ask me to choose a numbered level. Do not request administrator
+rights, weaken security controls, enable cloud data egress, or modify an existing
+vault without approval. Use lexical retrieval unless I explicitly request semantic
+retrieval. If no tagged release exists, tell me `main` is prerelease and ask before
+using it. Build the index, run the doctor, verify a grounded query, and show me how to
+start in a folder-capable AI workspace with the vault selected.
+```
+
+This is the canonical public setup path. The variants below are useful when a machine
+or migration requirement is already known, but ordinary users should not need them.
+
 Give a new coding agent the prompt below. The agent can clone this repository, read its setup contract, and build a working vault without prior Mindwell context.
 
 ```text
@@ -12,6 +31,12 @@ For a standard or managed user account:
 
 ```text
 Set up Mindwell from https://github.com/skyflyt/mindwell without administrator rights. Detect Windows or macOS, read AGENTS.md, and use only user-writable folders. Do not change execution policy or security controls. Use a project virtual environment without activating it. If Git is unavailable, use GitHub's source ZIP only when downloads are allowed. Stop and report any policy blocker. Use lexical retrieval, run the doctor and index, and verify one grounded query.
+```
+
+For an IT-assisted training setup, add:
+
+```text
+Create the vault with the personal-ops profile and core automation bundle in the user's local timezone. Build the initial index, run the doctor, and open START-HERE.md. Confirm the user can open a folder-capable AI workspace with the vault selected. Read automations/plan.json, show the user the four proposed schedules, and ask before registering them in any supported scheduler. Do not enable automatic external sending. Leave weekly reports, batch Excel analysis, and PDF splitting as ready-to-use recipes; configure source folders with the user during or after training.
 ```
 
 Include the destination when you know it:
@@ -36,3 +61,8 @@ The agent should leave you with:
 - an external SQLite FTS5 index;
 - a successful `mindwell doctor` report;
 - one verified retrieval with source paths and a context manifest.
+- `config/installation.json` recording the installed version, profile, provider, setup
+  track, and command runner;
+- for `personal-ops`, a ten-second folder check, three work recipes, and a
+  scheduler-neutral automation plan with duplicate-run guards and a weekly health
+  check.

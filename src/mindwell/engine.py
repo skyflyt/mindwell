@@ -179,10 +179,12 @@ def build(vault: Path, rebuild: bool = False) -> dict:
     for rel in set(known) - seen:
         con.execute("DELETE FROM fts WHERE path=?", (rel,)); con.execute("DELETE FROM chunks WHERE path=?", (rel,)); con.execute("DELETE FROM meta WHERE path=?", (rel,))
     con.commit()
-    return {"files": con.execute("SELECT count(*) FROM meta").fetchone()[0],
-            "chunks": con.execute("SELECT count(*) FROM chunks").fetchone()[0],
-            "changed_files": changed, "indexed_chunks": chunk_count,
-            "index": str(index_path(vault))}
+    result = {"files": con.execute("SELECT count(*) FROM meta").fetchone()[0],
+              "chunks": con.execute("SELECT count(*) FROM chunks").fetchone()[0],
+              "changed_files": changed, "indexed_chunks": chunk_count,
+              "index": str(index_path(vault))}
+    con.close()
+    return result
 
 
 def intent(query: str) -> set[str]:
@@ -280,7 +282,12 @@ def assemble_context(selected: list[tuple], query: str, budget_chars: int) -> tu
     return "\n\n".join(blocks), manifest
 
 
-def retrieve(vault: Path, query: str, mode: str = "standard") -> dict:
+def retrieve(vault: Path, query: str, mode: str = "standard",
+             refresh: bool = True) -> dict:
+    # Keep ordinary searches current. The incremental build hashes each note, so
+    # unchanged vaults are inexpensive while new and edited notes are available
+    # immediately without asking the user to remember a separate index command.
+    refresh_stats = build(vault) if refresh else None
     config, con = load_config(vault), connect(vault)
     cfg = config["context_modes"][mode]
     words = [w for w in re.findall(r"[A-Za-z0-9_.-]{3,}", query)][:12]
@@ -313,6 +320,9 @@ def retrieve(vault: Path, query: str, mode: str = "standard") -> dict:
         pages.add(row[0]); selected.append((score, cid, row))
         if len(selected) >= cfg["top_k"]: break
     body, manifest = assemble_context(selected[:cfg["chunks"]], query, cfg["budget_chars"])
-    return {"mode": mode, "provider": config["retrieval_provider"], "query": query, "context": body,
-            "context_chars": len(body), "estimated_tokens": math.ceil(len(body) / 4),
-            "results": manifest}
+    result = {"mode": mode, "provider": config["retrieval_provider"], "query": query,
+              "index_refresh": refresh_stats, "context": body,
+              "context_chars": len(body), "estimated_tokens": math.ceil(len(body) / 4),
+              "results": manifest}
+    con.close()
+    return result
