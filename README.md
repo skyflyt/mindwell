@@ -91,10 +91,15 @@ vault. OneDrive, Dropbox, and iCloud should never sync a live search database.
 
 ## Requirements
 
-- Python 3.11 or newer
+- Python 3.10 or newer
 - SQLite with FTS5, included with standard Python builds
 - Write access to the selected vault and the current user's cache
-- Git or access to the [latest release](https://github.com/skyflyt/mindwell/releases/latest)
+- Git and access to `pypi.org`/`files.pythonhosted.org` (the clone-and-install path
+  below), or a browser to fetch the [latest release](https://github.com/skyflyt/mindwell/releases/latest)
+
+The clone-and-install path needs only `github.com` plus PyPI egress, which is what
+most sandboxed or cloud-agent environments allow by default — see
+[Sandboxed and cloud agents](#sandboxed-and-cloud-agents).
 
 Mindwell does not require administrator rights when those prerequisites are already
 available. On a managed computer, do not change execution policy or disable security
@@ -102,12 +107,19 @@ controls. Ask IT to provide a missing or blocked prerequisite.
 
 ## Manual setup
 
-Download and extract the latest tagged release, then open a terminal in the extracted
-folder.
+Clone the repository and check out the latest tagged release, then open a terminal in
+that checkout. This is the canonical install path — it needs only `github.com` and
+PyPI egress, so it also works in sandboxed and cloud-agent environments with a
+restricted egress allowlist. A downloaded release wheel or ZIP is a convenience for
+humans, not a requirement; it commonly needs additional GitHub asset hosts
+(`objects.githubusercontent.com`/`codeload.github.com`) that stricter allowlists block.
 
 ### Windows PowerShell
 
 ```powershell
+git clone https://github.com/skyflyt/mindwell
+cd mindwell
+git checkout (git describe --tags --abbrev=0)  # latest tagged release
 py -3 -m venv .venv
 .venv\Scripts\python.exe -m pip install .
 .venv\Scripts\mindwell.exe recommend "$HOME\Documents\MySecondBrain"
@@ -119,6 +131,9 @@ py -3 -m venv .venv
 ### macOS or Linux
 
 ```bash
+git clone https://github.com/skyflyt/mindwell
+cd mindwell
+git checkout "$(git describe --tags --abbrev=0)"   # latest tagged release
 python3 -m venv .venv
 .venv/bin/python -m pip install .
 .venv/bin/mindwell recommend ~/Documents/MySecondBrain
@@ -131,7 +146,12 @@ The recommendation command prints an exact plan. Review that plan instead of cop
 the example `init` command when the destination already contains files.
 
 You do not need to activate the virtual environment. Call its executables directly.
-After a normal installation, Mindwell does not depend on the extracted source folder.
+After a normal installation, Mindwell does not depend on the cloned source folder.
+
+A downloaded release wheel or source archive works the same way (`pip install
+mindwell_framework-<version>-py3-none-any.whl` or extract-then-`pip install .`) and
+remains a supported alternative — just not the one to reach for when egress is
+restricted.
 
 ## Existing vaults
 
@@ -148,6 +168,30 @@ mindwell recommend "<VAULT_PATH>"
 Mindwell recognizes compatibility files from earlier versions, including `LOBY.md`,
 `config/loby.json`, and `LOBY_INDEX`. See [the migration guide](docs/migration.md) for
 the full non-destructive workflow.
+
+## Sandboxed and cloud agents
+
+Running the setup prompt from inside a sandboxed or cloud-agent shell (Cowork, Claude
+Code cloud agents, CI, or any environment isolated from your own computer) is a
+first-class, supported way to use Mindwell — not a workaround. The recommended split
+of labor:
+
+- **The sandbox owns lexical retrieval.** It is zero-dependency and works with no
+  network access beyond the install step, exactly as documented above.
+- **Your own computer owns anything Ollama-bound.** `mindwell retrieve` embeds the
+  *query itself* on every call, not just the indexed notes, so semantic retrieval
+  needs Ollama reachable for the entire `retrieve` call, every time — not just once
+  at index time. `localhost` inside a sandbox is the sandbox, not your computer, so
+  semantic retrieval cannot run there unless you deliberately expose Ollama on a
+  network path the sandbox can reach (see the security caveat under
+  [Optional Ollama retrieval](#optional-ollama-retrieval)).
+
+Pass `--environment sandbox` to `mindwell init` so `config/installation.json` records
+that context; the weekly health-check automation and `mindwell doctor` use it to tell
+an expected "Ollama unreachable" or "index rebuilt" state apart from a real failure.
+When Ollama is configured but unreachable, `doctor`/`recommend` return a `guidance`
+field with the exact commands to run natively — present those to the user for
+approval rather than trying to make semantic retrieval work inside the sandbox.
 
 ## Scheduled work
 
@@ -179,10 +223,28 @@ Example:
 mindwell retrieve "<VAULT_PATH>" "What are the current project risks?" --mode standard --explain
 ```
 
+### Where the index lives
+
+The SQLite search index lives outside the vault, under the current user's cache
+(`%LOCALAPPDATA%\mindwell` on Windows, `~/.cache/mindwell` or `$XDG_CACHE_HOME` on
+macOS/Linux) by default, keyed to the vault's path. Set `MINDWELL_INDEX` (or the
+legacy `LOBY_INDEX`) to point it at a different, persistent, **not cloud-synced**
+location — useful for a sandbox with its own durable scratch volume. Never point it
+at a folder that OneDrive, Dropbox, or iCloud syncs: a live WAL-mode SQLite database
+in a synced folder is a known corruption generator, which is also why a vault-local
+index is intentionally not offered as an option.
+
+In an ephemeral sandbox with no durable volume, the index simply rebuilds on the
+first `retrieve` call each session — `build()` reports `changed_files`/`indexed_chunks`
+so you can see the (usually seconds-long, lexical-only) rebuild cost. This is expected
+behavior, not breakage.
+
 ### Optional Ollama retrieval
 
 Ollama adds local semantic search. Install it only when the computer has enough memory
-and storage and local policy allows it.
+and storage and local policy allows it, and only run these commands on the machine
+where Ollama itself is installed — see
+[Sandboxed and cloud agents](#sandboxed-and-cloud-agents) for why that matters.
 
 ```bash
 python -m pip install ".[semantic]"
@@ -191,6 +253,21 @@ mindwell configure "<VAULT_PATH>" --provider ollama
 mindwell index "<VAULT_PATH>" --rebuild
 mindwell doctor "<VAULT_PATH>"
 ```
+
+The Ollama endpoint defaults to `http://localhost:11434` and is configurable two ways:
+the `ollama_url` key in `config/mindwell.json`, or the `MINDWELL_OLLAMA_URL`
+environment variable (also accepts the legacy `LOBY_OLLAMA_URL`), which always wins.
+Ollama has no built-in authentication, so only point `ollama_url` at a non-localhost
+address (a Tailscale address, an SSH tunnel, a LAN IP) that you control and trust —
+anything that can reach it can use it as if it were their own.
+
+If Ollama is unreachable when `mindwell index` or `mindwell retrieve` runs, Mindwell
+does not crash: `retrieve` degrades to the lexical ranking it already computed and
+adds a plain-language `warnings`/`guidance` explanation to its JSON result instead of
+a stack trace; `index` reports a clean one-line error with the same guidance rather
+than an unhandled `OSError`. `mindwell doctor` and `mindwell recommend --prefer-semantic`
+surface the same guidance, including the exact native commands to fix it, whenever
+Ollama is configured but unreachable.
 
 Return to lexical search at any time:
 
@@ -226,9 +303,11 @@ mindwell --version
 
 ## Releases and updates
 
-Install the newest tagged [GitHub release](https://github.com/skyflyt/mindwell/releases).
-Each release includes a wheel and source archive. The `main` branch contains
-development work.
+Install the newest tagged release — clone the repository and check out the tag as
+shown under [Manual setup](#manual-setup), which is the canonical agent install and
+works under restricted egress. Each [GitHub release](https://github.com/skyflyt/mindwell/releases)
+also includes a wheel and source archive as a convenience for humans and mirrors. The
+`main` branch contains development work.
 
 `mindwell --version` reports the installed package version.
 `config/installation.json` records the version, profile, provider, and setup track for
@@ -243,6 +322,7 @@ Maintainers can use the [release checklist](docs/releasing.md).
 - [Existing-vault migration](docs/migration.md)
 - [Security](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
+- [Changelog](CHANGELOG.md)
 
 ## License
 

@@ -1,11 +1,14 @@
 import json
+import re
+import sys
 import tempfile
 import unittest
-import tomllib
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
-from mindwell.config import DEFAULT_CONFIG
+from mindwell.config import DEFAULT_CONFIG, load_config
 from mindwell.coordinator import CoordinationError, Coordinator
+from mindwell.doctor import inspect as doctor_inspect
 from mindwell.engine import (assemble_context, build, chunks_for, compact_evidence,
                              frontmatter, intent, retrieve, rrf)
 from mindwell.scaffold import init_vault
@@ -17,8 +20,26 @@ from mindwell import __version__
 class FrameworkTests(unittest.TestCase):
     def test_runtime_and_package_versions_match(self):
         project = Path(__file__).parents[1]
-        package_version = tomllib.loads((project / "pyproject.toml").read_text())["project"]["version"]
+        text = (project / "pyproject.toml").read_text()
+        package_version = re.search(r'^version = "([^"]+)"', text, re.M).group(1)
         self.assertEqual(package_version, __version__)
+
+    def test_python_floor_is_310(self):
+        project = Path(__file__).parents[1]
+        text = (project / "pyproject.toml").read_text()
+        requires = re.search(r'^requires-python = "([^"]+)"', text, re.M).group(1)
+        self.assertEqual(">=3.10", requires)
+        # sys.version_info is a tuple subclass, so this is the same comparison
+        # doctor.py and advisor.py make against the floor.
+        self.assertTrue((3, 10) <= sys.version_info)
+
+    def test_ollama_url_env_override_wins_over_vault_config(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault)
+            with patch.dict("os.environ", {"MINDWELL_OLLAMA_URL": "http://example.test:9999"}):
+                config = load_config(vault)
+            self.assertEqual("http://example.test:9999", config["ollama_url"])
 
     def test_scaffold_contains_contract_and_config(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -54,6 +75,99 @@ class FrameworkTests(unittest.TestCase):
             result = retrieve(vault, "Who owns the Cedar forecast?")
             self.assertEqual(1, result["index_refresh"]["changed_files"])
             self.assertIn("projects/new-work.md", [item["path"] for item in result["results"]])
+
+    def test_retrieve_degrades_to_lexical_when_ollama_unreachable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp); init_vault(vault)
+            note = vault / "wiki" / "projects" / "atlas.md"
+            note.parent.mkdir(parents=True, exist_ok=True)
+            note.write_text("# Atlas migration\n\nMorgan Reed owns the Atlas migration.")
+            build(vault, rebuild=True)  # lexical index already populated
+
+            config_path = vault / "config" / "mindwell.json"
+            config = json.loads(config_path.read_text())
+            config["retrieval_provider"] = "ollama"
+            config["ollama_url"] = "http://127.0.0.1:1"  # refused immediately
+            config_path.write_text(json.dumps(config))
+
+            result = retrieve(vault, "Who owns the Atlas migration?")  # must not raise
+
+            self.assertEqual("lexical (ollama unreachable, degraded)", result["provider"])
+            self.assertTrue(result["warnings"])
+            self.assertTrue(result["guidance"])
+            self.assertIn("wiki/projects/atlas.md", [item["path"] for item in result["results"]])
+
+    def test_index_reports_clean_error_when_ollama_unreachable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp); init_vault(vault)
+            (vault / "note.md").write_text("# Note\n\nSome content.")
+            config_path = vault / "config" / "mindwell.json"
+            config = json.loads(config_path.read_text())
+            config["retrieval_provider"] = "ollama"
+            config["ollama_url"] = "http://127.0.0.1:1"
+            config_path.write_text(json.dumps(config))
+
+            from mindwell.engine import OllamaUnavailable
+            with self.assertRaises(OllamaUnavailable) as ctx:
+                build(vault, rebuild=True)
+            self.assertIn("http://127.0.0.1:1", str(ctx.exception))
+
+    def test_doctor_skips_ollama_probe_and_is_consistent_for_lexical(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault, profile="personal-ops")
+            result = doctor_inspect(vault)
+            self.assertTrue(result["checks"]["ollama"]["ok"])
+            self.assertTrue(result["checks"]["ollama"].get("skipped"))
+            self.assertEqual("lexical", result["mode"])
+            self.assertTrue(result["ready"])
+            self.assertEqual("ready for zero-dependency lexical retrieval",
+                             result["recommendation"])
+
+    def test_doctor_gives_guidance_when_ollama_unreachable(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault, profile="personal-ops")
+            config_path = vault / "config" / "mindwell.json"
+            config = json.loads(config_path.read_text())
+            config["retrieval_provider"] = "ollama"
+            config["ollama_url"] = "http://127.0.0.1:1"
+            config_path.write_text(json.dumps(config))
+
+            result = doctor_inspect(vault)
+            self.assertEqual("semantic-unreachable", result["mode"])
+            self.assertFalse(result["ready"])
+            self.assertFalse(result["checks"]["ollama"]["ok"])
+            self.assertIn("guidance", result)
+            self.assertTrue(any("native" in line.lower() for line in result["guidance"]))
+
+    def test_doctor_warns_on_non_local_ollama_endpoint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault, profile="personal-ops")
+            config_path = vault / "config" / "mindwell.json"
+            config = json.loads(config_path.read_text())
+            config["retrieval_provider"] = "ollama"
+            config["ollama_url"] = "http://192.168.1.50:11434"
+            config_path.write_text(json.dumps(config))
+
+            fake_response = MagicMock()
+            fake_response.read.return_value = b'{"models": []}'
+            fake_response.__enter__.return_value = fake_response
+            fake_response.__exit__.return_value = False
+
+            with patch("mindwell.doctor.urllib.request.urlopen", return_value=fake_response):
+                result = doctor_inspect(vault)
+            self.assertEqual("semantic", result["mode"])
+            self.assertIn("192.168.1.50", result.get("security_notice", ""))
+
+    def test_scaffold_records_environment_and_runner_hint(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault, environment="sandbox")
+            installation = json.loads((vault / "config/installation.json").read_text())
+            self.assertEqual("sandbox", installation["environment"])
+            self.assertIn("mindwell.cli", installation["runner_hint"])
 
     def test_personal_ops_profile_has_habits_recipes_and_automation_plan(self):
         with tempfile.TemporaryDirectory() as tmp:

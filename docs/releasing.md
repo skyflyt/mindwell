@@ -16,5 +16,19 @@ builds a wheel and source archive, and attaches both to a GitHub release. Do not
 or move a published version tag.
 
 Fresh setup agents should inspect the repository contract, resolve the newest release
-tag, and install its wheel in a user-owned virtual environment. If no release exists,
-they must identify `main` as prerelease and ask before proceeding.
+tag, and install **from a tag checkout** in a user-owned virtual environment:
+
+```bash
+git clone https://github.com/skyflyt/mindwell
+cd mindwell
+git checkout "$(git describe --tags --abbrev=0)"
+python3 -m venv .venv
+.venv/bin/python -m pip install .
+```
+
+This is the agent contract, not the release wheel or source archive — those are
+convenience mirrors for humans, and typically require GitHub asset-hosting domains
+(`objects.githubusercontent.com`/`codeload.github.com`) beyond `github.com` and PyPI,
+which sandboxed and cloud-agent egress allowlists commonly block (see AGENTS.md's
+"Sandboxed and cloud agents" section). If no release exists, they must identify `main`
+as prerelease and ask before proceeding.

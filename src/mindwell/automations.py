@@ -77,12 +77,20 @@ Before work, check `automations/runs/weekly-health-check-YYYY-MM-DD.md` using th
 date. If it exists, stop and report that this run was already completed. Otherwise,
 create it immediately with the timestamp and task ID.
 
-Work only inside this vault. Read `config/installation.json`, run the recorded
-Mindwell doctor command if available, confirm the required core files and external
-index are present, and review `automations/plan.json` plus the last seven days of run
-stamps for missing or duplicate runs. Write a dated report under
-`automations/health/`. Surface actionable failures clearly. Do not repair files,
-register schedules, contact anyone, or change external systems automatically.
+Work only inside this vault. Read `config/installation.json`. Try the recorded
+`runner` command first; if it fails, retry with `runner_hint` (a portable form such as
+`python3 -m mindwell.cli`) from this environment's own install before concluding the
+CLI is unreachable — a `runner` path from a different machine or a past sandbox
+session is expected to be dead here, not a failure. If `installation.json` records
+`environment: sandbox`, or the recorded `runner` path does not exist on this machine,
+treat a missing CLI as expected and report it once as INFO rather than an actionable
+failure. Confirm the required core files are present. If the external index is
+missing, that is expected too — it self-heals on the next `mindwell retrieve` call —
+note it rather than flagging it. Review `automations/plan.json` plus the last seven
+days of run stamps for missing or duplicate runs. Write a dated report under
+`automations/health/`. Reserve "actionable failure" for missing core files, a corrupt
+config, or duplicate/missing run stamps. Do not repair files, register schedules,
+contact anyone, or change external systems automatically.
 """,
 }
 

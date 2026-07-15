@@ -34,6 +34,9 @@ def load_config(vault: Path) -> dict:
                 config[key].update(value)
             else:
                 config[key] = value
+    ollama_url = os.environ.get("MINDWELL_OLLAMA_URL") or os.environ.get("LOBY_OLLAMA_URL")
+    if ollama_url:
+        config["ollama_url"] = ollama_url
     return config
 
 
