@@ -10,6 +10,20 @@ from dataclasses import dataclass
 from pathlib import Path
 
 from .config import index_path, load_config
+from .guidance import ollama_unreachable_guidance
+
+
+class OllamaUnavailable(RuntimeError):
+    """Raised when Ollama cannot be reached for embedding.
+
+    Carries the resolved URL so callers can build vault-specific guidance
+    (native install steps, MINDWELL_OLLAMA_URL) without embed() needing to
+    know the vault path.
+    """
+
+    def __init__(self, url: str, detail: str):
+        self.url = url
+        super().__init__(f"Ollama at {url} is not reachable: {detail}")
 
 
 EVIDENCE_STOPWORDS = {
@@ -128,63 +142,69 @@ def embed(config: dict, texts: list[str]):
         raise RuntimeError(
             'semantic retrieval needs NumPy; install with pip install "mindwell-framework[semantic]"'
         ) from exc
+    url = config["ollama_url"]
     request = urllib.request.Request(
-        config["ollama_url"].rstrip("/") + "/api/embed",
+        url.rstrip("/") + "/api/embed",
         data=json.dumps({"model": config["embedding_model"], "input": texts}).encode(),
         headers={"Content-Type": "application/json"})
-    with urllib.request.urlopen(request, timeout=180) as response:
-        return [np.asarray(item, dtype=np.float32)
-                for item in json.loads(response.read())["embeddings"]]
+    try:
+        with urllib.request.urlopen(request, timeout=180) as response:
+            return [np.asarray(item, dtype=np.float32)
+                    for item in json.loads(response.read())["embeddings"]]
+    except OSError as exc:
+        raise OllamaUnavailable(url, str(exc)) from exc
 
 
 def build(vault: Path, rebuild: bool = False) -> dict:
     config, con = load_config(vault), connect(vault)
-    index_model = ("lexical" if config["retrieval_provider"] == "lexical"
-                   else f"ollama:{config['embedding_model']}")
-    if rebuild:
-        con.execute("DELETE FROM fts"); con.execute("DELETE FROM chunks"); con.execute("DELETE FROM meta")
-    known = {p: (sha, model) for p, sha, model in con.execute("SELECT path,sha256,model FROM meta")}
-    seen, changed, chunk_count = set(), 0, 0
-    for path in vault.rglob("*.md"):
-        rel = path.relative_to(vault).as_posix()
-        if any(part in config["exclude_dirs"] for part in path.parts):
-            continue
-        seen.add(rel)
-        text = path.read_text(encoding="utf-8", errors="replace")
-        digest = hashlib.sha256(text.encode()).hexdigest()
-        if known.get(rel) == (digest, index_model):
-            continue
-        note_chunks = chunks_for(vault, path, text, config)
-        vectors = [None] * len(note_chunks)
-        if config["retrieval_provider"] == "ollama":
-            vectors = []
-            for start in range(0, len(note_chunks), 16):
-                vectors.extend(embed(config, [c.text for c in note_chunks[start:start + 16]]))
-        meta, _ = frontmatter(text); source_class, authority = classify(rel, meta)
-        con.execute("DELETE FROM fts WHERE path=?", (rel,)); con.execute("DELETE FROM chunks WHERE path=?", (rel,))
-        for chunk, vector in zip(note_chunks, vectors):
-            if vector is not None:
-                import numpy as np
-                vector /= np.linalg.norm(vector) + 1e-9
-                dim, blob = vector.size, vector.tobytes()
-            else:
-                dim, blob = 0, None
-            con.execute("INSERT INTO chunks VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
-                        (chunk.id, rel, chunk.ordinal, chunk.heading, chunk.body, chunk.prefix,
-                         source_class, meta.get("status", ""), meta.get("updated", ""), authority,
-                         dim, blob))
-            con.execute("INSERT INTO fts VALUES (?,?,?,?)", (chunk.id, rel, chunk.heading, chunk.text))
-        con.execute("INSERT OR REPLACE INTO meta VALUES (?,?,?)", (rel, digest, index_model))
-        con.commit(); changed += 1; chunk_count += len(note_chunks)
-    for rel in set(known) - seen:
-        con.execute("DELETE FROM fts WHERE path=?", (rel,)); con.execute("DELETE FROM chunks WHERE path=?", (rel,)); con.execute("DELETE FROM meta WHERE path=?", (rel,))
-    con.commit()
-    result = {"files": con.execute("SELECT count(*) FROM meta").fetchone()[0],
-              "chunks": con.execute("SELECT count(*) FROM chunks").fetchone()[0],
-              "changed_files": changed, "indexed_chunks": chunk_count,
-              "index": str(index_path(vault))}
-    con.close()
-    return result
+    try:
+        index_model = ("lexical" if config["retrieval_provider"] == "lexical"
+                       else f"ollama:{config['embedding_model']}")
+        if rebuild:
+            con.execute("DELETE FROM fts"); con.execute("DELETE FROM chunks"); con.execute("DELETE FROM meta")
+        known = {p: (sha, model) for p, sha, model in con.execute("SELECT path,sha256,model FROM meta")}
+        seen, changed, chunk_count = set(), 0, 0
+        for path in vault.rglob("*.md"):
+            rel = path.relative_to(vault).as_posix()
+            if any(part in config["exclude_dirs"] for part in path.parts):
+                continue
+            seen.add(rel)
+            text = path.read_text(encoding="utf-8", errors="replace")
+            digest = hashlib.sha256(text.encode()).hexdigest()
+            if known.get(rel) == (digest, index_model):
+                continue
+            note_chunks = chunks_for(vault, path, text, config)
+            vectors = [None] * len(note_chunks)
+            if config["retrieval_provider"] == "ollama":
+                vectors = []
+                for start in range(0, len(note_chunks), 16):
+                    vectors.extend(embed(config, [c.text for c in note_chunks[start:start + 16]]))
+            meta, _ = frontmatter(text); source_class, authority = classify(rel, meta)
+            con.execute("DELETE FROM fts WHERE path=?", (rel,)); con.execute("DELETE FROM chunks WHERE path=?", (rel,))
+            for chunk, vector in zip(note_chunks, vectors):
+                if vector is not None:
+                    import numpy as np
+                    vector /= np.linalg.norm(vector) + 1e-9
+                    dim, blob = vector.size, vector.tobytes()
+                else:
+                    dim, blob = 0, None
+                con.execute("INSERT INTO chunks VALUES (?,?,?,?,?,?,?,?,?,?,?,?)",
+                            (chunk.id, rel, chunk.ordinal, chunk.heading, chunk.body, chunk.prefix,
+                             source_class, meta.get("status", ""), meta.get("updated", ""), authority,
+                             dim, blob))
+                con.execute("INSERT INTO fts VALUES (?,?,?,?)", (chunk.id, rel, chunk.heading, chunk.text))
+            con.execute("INSERT OR REPLACE INTO meta VALUES (?,?,?)", (rel, digest, index_model))
+            con.commit(); changed += 1; chunk_count += len(note_chunks)
+        for rel in set(known) - seen:
+            con.execute("DELETE FROM fts WHERE path=?", (rel,)); con.execute("DELETE FROM chunks WHERE path=?", (rel,)); con.execute("DELETE FROM meta WHERE path=?", (rel,))
+        con.commit()
+        result = {"files": con.execute("SELECT count(*) FROM meta").fetchone()[0],
+                  "chunks": con.execute("SELECT count(*) FROM chunks").fetchone()[0],
+                  "changed_files": changed, "indexed_chunks": chunk_count,
+                  "index": str(index_path(vault))}
+        return result
+    finally:
+        con.close()
 
 
 def intent(query: str) -> set[str]:
@@ -287,21 +307,32 @@ def retrieve(vault: Path, query: str, mode: str = "standard",
     # Keep ordinary searches current. The incremental build hashes each note, so
     # unchanged vaults are inexpensive while new and edited notes are available
     # immediately without asking the user to remember a separate index command.
-    refresh_stats = build(vault) if refresh else None
+    ollama_error = None
+    try:
+        refresh_stats = build(vault) if refresh else None
+    except OllamaUnavailable as exc:
+        # Indexing couldn't embed changed notes, but the lexical ranking below
+        # is computed independently - fall back to it instead of crashing.
+        refresh_stats = None
+        ollama_error = exc
     config, con = load_config(vault), connect(vault)
     cfg = config["context_modes"][mode]
     words = [w for w in re.findall(r"[A-Za-z0-9_.-]{3,}", query)][:12]
     expression = " OR ".join(f'"{w}"' for w in words)
     lexical = [r[0] for r in con.execute("SELECT id FROM fts WHERE fts MATCH ? ORDER BY bm25(fts) LIMIT 100", (expression,))]
     rankings = [lexical]
-    if config["retrieval_provider"] == "ollama":
+    if config["retrieval_provider"] == "ollama" and ollama_error is None:
         import numpy as np
         rows = con.execute("SELECT id,vec FROM chunks WHERE vec IS NOT NULL").fetchall()
         if rows:
-            q = embed(config, ["Instruct: retrieve relevant notes\nQuery: " + query])[0]
-            q /= np.linalg.norm(q) + 1e-9
-            matrix = np.vstack([np.frombuffer(row[1], dtype=np.float32) for row in rows])
-            rankings.append([rows[i][0] for i in np.argsort(-(matrix @ q))[:100]])
+            try:
+                q = embed(config, ["Instruct: retrieve relevant notes\nQuery: " + query])[0]
+            except OllamaUnavailable as exc:
+                ollama_error = exc
+            else:
+                q /= np.linalg.norm(q) + 1e-9
+                matrix = np.vstack([np.frombuffer(row[1], dtype=np.float32) for row in rows])
+                rankings.append([rows[i][0] for i in np.argsort(-(matrix @ q))[:100]])
     scores, query_intent = rrf(rankings), intent(query)
     ranked = []
     for cid, base in scores.items():
@@ -320,9 +351,18 @@ def retrieve(vault: Path, query: str, mode: str = "standard",
         pages.add(row[0]); selected.append((score, cid, row))
         if len(selected) >= cfg["top_k"]: break
     body, manifest = assemble_context(selected[:cfg["chunks"]], query, cfg["budget_chars"])
-    result = {"mode": mode, "provider": config["retrieval_provider"], "query": query,
+    provider = config["retrieval_provider"]
+    result = {"mode": mode, "provider": provider, "query": query,
               "index_refresh": refresh_stats, "context": body,
               "context_chars": len(body), "estimated_tokens": math.ceil(len(body) / 4),
               "results": manifest}
+    if ollama_error is not None:
+        guidance = ollama_unreachable_guidance(vault, ollama_error.url)
+        result["provider"] = "lexical (ollama unreachable, degraded)"
+        result["warnings"] = [guidance["summary"] +
+                              " Results below are lexical-only. Semantic retrieval "
+                              "requires running the whole `retrieve` call on the "
+                              "machine where Ollama is reachable - see 'guidance'."]
+        result["guidance"] = guidance["guidance"]
     con.close()
     return result

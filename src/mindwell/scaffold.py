@@ -9,6 +9,25 @@ from . import __version__
 from .config import DEFAULT_CONFIG
 from .automations import write_automation_plan
 
+
+def _detect_environment() -> str:
+    """Best-effort guess at whether init is running in a sandbox/container.
+
+    Reliable auto-detection isn't possible in general, so this only looks for
+    common container markers and otherwise assumes "native". Callers (setup
+    agents) should pass an explicit --environment when they know better -
+    that always wins over the heuristic.
+    """
+    if Path("/.dockerenv").exists():
+        return "sandbox"
+    try:
+        cgroup = Path("/proc/1/cgroup").read_text(encoding="utf-8", errors="ignore")
+        if any(marker in cgroup for marker in ("docker", "kubepods", "containerd")):
+            return "sandbox"
+    except OSError:
+        pass
+    return "native"
+
 FILES = {
     "AGENTS.md": """# Agent entry point
 
@@ -168,7 +187,8 @@ or what it contains.
 def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
                profile: str = "basic", automations: str = "none",
                timezone: str = "local",
-               private_workspaces: bool = False) -> list[Path]:
+               private_workspaces: bool = False,
+               environment: str | None = None) -> list[Path]:
     existing_content = vault.exists() and any(vault.iterdir())
     vault.mkdir(parents=True, exist_ok=True)
     created = []
@@ -204,7 +224,14 @@ def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
             "optional_features": (["private-workspaces"]
                                   if private_workspaces else []),
             "installed_at": datetime.now(dt_timezone.utc).isoformat(),
+            "environment": environment or _detect_environment(),
+            # "runner" is this machine's absolute interpreter path - it will not
+            # exist in a different sandbox session or on the user's own machine.
+            # "runner_hint" is the portable form other environments should look
+            # for instead of concluding the CLI is unreachable.
             "runner": f'"{sys.executable}" -m mindwell.cli',
+            "runner_hint": "python3 -m mindwell.cli (or the mindwell/loby console "
+                           "script) from that environment's own install venv",
         }
         install_path.write_text(json.dumps(installation, indent=2) + "\n",
                                 encoding="utf-8")
