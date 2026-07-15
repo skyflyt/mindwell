@@ -291,6 +291,7 @@ mindwell index "<VAULT_PATH>" --rebuild
 ```text
 mindwell recommend PATH [--prefer-semantic] [--basic]
 mindwell init PATH [--agent-name NAME] [--profile basic|personal-ops] [--automations none|core] [--private-workspaces]
+mindwell upgrade PATH [--agent-name NAME] [--no-backup] [--dry-run]
 mindwell index PATH [--rebuild]
 mindwell retrieve PATH QUERY [--mode quick|standard|deep] [--explain] [--no-refresh]
 mindwell automations PATH [--bundle core] [--timezone ZONE] [--force]
@@ -312,6 +313,30 @@ also includes a wheel and source archive as a convenience for humans and mirrors
 `mindwell --version` reports the installed package version.
 `config/installation.json` records the version, profile, provider, and setup track for
 each vault. `mindwell doctor` warns when the package and vault versions do not match.
+
+### Updating an already-set-up vault
+
+Ask your agent: *"update my Mindwell to the latest."* The safe recipe is: pull or
+re-clone the latest tag, `pip install .` to reinstall the CLI, then
+`mindwell upgrade "<VAULT_PATH>"` — not `mindwell init` and not `mindwell init
+--force`.
+
+```bash
+mindwell upgrade "<VAULT_PATH>"
+```
+
+`upgrade` is non-destructive by construction: it never overwrites `AGENTS.md` (only
+creates it if missing), never overwrites any other scaffold file you have modified
+since Mindwell last wrote it, adds scaffold files a newer release introduced, backs up
+everything it is about to touch first, reconciles the recorded version, rebuilds the
+index, and runs `mindwell doctor`. Run `mindwell upgrade "<VAULT_PATH>" --dry-run`
+first to preview exactly what it would create/update/leave alone before writing.
+`mindwell recommend` suggests `upgrade` automatically once it sees a vault whose
+recorded version is older than the installed CLI.
+
+`init --force` also no longer overwrites a customized `AGENTS.md` or a scaffold file
+you have edited — it repairs missing or untouched files and reports the rest as
+`preserved_customized` instead of clobbering them.
 
 Maintainers can use the [release checklist](docs/releasing.md).
 

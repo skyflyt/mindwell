@@ -28,7 +28,7 @@ Read `BOOTSTRAP.md`, `README.md`, and `SECURITY.md` before running commands. Tre
    editable install only for repository development.
 5. On restricted accounts, call the virtual environment's Python and Mindwell executables directly. Do not require activation, request administrator rights, change execution policy, or disable security controls. If Git is unavailable and GitHub downloads are allowed, use the repository ZIP as a fallback — expect that some egress allowlists block it too.
 6. Use lexical retrieval unless the user requests semantic search and has Ollama available. Do not install Ollama or enable data egress without permission.
-7. Follow the exact command plan returned by `mindwell recommend`. The normal new-user result is `personal-ops` with lexical retrieval and core automations. Preserve existing files unless the user explicitly approves `--force`.
+7. Follow the exact command plan returned by `mindwell recommend`. The normal new-user result is `personal-ops` with lexical retrieval and core automations. Preserve existing files unless the user explicitly approves `--force`. Even with `--force`, `init` never overwrites `AGENTS.md`/`AGENT.md` once they exist, and never overwrites a scaffold file you have modified — see "Updating an existing installation" below for the vault that already has an `AGENTS.md`.
 8. Run `mindwell index <vault-path>`, then `mindwell doctor <vault-path>` so the final health report includes the index.
 9. Verify setup with `mindwell retrieve <vault-path> "What are the rules for maintaining this vault?" --mode standard --explain`.
 10. Report the operating system, provider, files created, index location, verification result, and any policy or permission blocker.
@@ -46,6 +46,39 @@ them. Do not enable automatic external sending.
 ## Existing vaults
 
 Follow `docs/migration.md`. Add the framework non-destructively. Do not move, rename, or rewrite source notes to match the example structure. Back up the vault before broad changes.
+
+## Updating an existing installation
+
+When the user asks to update, upgrade, or refresh Mindwell itself (not their vault
+content) — phrasings like "update my Mindwell to the latest" or "bring this vault
+current" — this is the canonical recipe, and it is safe to run without asking the user
+to inspect code first, because `mindwell upgrade` is non-destructive by construction:
+
+1. Pull the latest changes (`git pull`) in the existing checkout, or clone fresh and
+   check out the newest tag as in "Fresh setup" above, if no local checkout exists.
+2. Reinstall the CLI: `.venv/bin/python -m pip install .` (or the equivalent
+   `.venv\Scripts\python.exe -m pip install .` on Windows) from that checkout.
+3. Run `mindwell upgrade "<vault-path>"` against the vault — never `mindwell init` or
+   `mindwell init --force` on a vault that already has an `AGENTS.md`. `upgrade`:
+   - never overwrites `AGENTS.md` or `AGENT.md` — it only creates them if missing;
+   - never overwrites any other scaffold file you have modified since Mindwell wrote
+     it — those are left alone and listed as `preserved_customized`, not silently
+     dropped;
+   - adds scaffold files a newer release introduced that are missing from the vault;
+   - backs up every file it is about to touch before writing anything;
+   - reconciles `config/installation.json`'s recorded version, rebuilds the index, and
+     runs `mindwell doctor` so you get one final health report.
+4. Before running step 3 for real, run `mindwell upgrade "<vault-path>" --dry-run`
+   first, show the user the JSON change summary (what would be created/updated/left
+   alone), and get their approval — the same "show the proposed changes and ask"
+   discipline as any other write to an existing vault, per the project's safety rules.
+5. Report the version reconciliation (`from_version` → `to_version`), any files listed
+   under `preserved_customized` (tell the user what they contain and that they were
+   left untouched), and the final `mindwell doctor` result.
+
+`mindwell recommend <vault-path>` already detects this case on its own: if the vault's
+recorded version is older than the installed CLI, it suggests `mindwell upgrade`
+instead of `init`. Trust that suggestion over improvising an `init --force`.
 
 ## Sandboxed and cloud agents
 

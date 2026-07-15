@@ -1,5 +1,70 @@
 # Changelog
 
+## 0.4.1
+
+Fixes a real data-loss bug found in the field: `mindwell init --force` silently
+overwrote a user's canonical `AGENTS.md` (and other Mindwell-managed scaffold files)
+with the stock template, destroying customizations for exactly the users who bother to
+customize `AGENTS.md`. Plain `init` already preserved existing files correctly; only
+`--force` clobbered. This release adds a safe upgrade path and closes the `--force`
+hole.
+
+### Added
+
+- **`mindwell upgrade <vault>`**, the canonical, non-destructive way to bring an
+  existing Mindwell vault up to the installed version. It:
+  - reconciles the vault's recorded `mindwell_version` to the installed CLI version so
+    `doctor`'s `version_match` check goes green;
+  - adds any new Mindwell-managed scaffold file a newer release introduced that the
+    vault is missing;
+  - never overwrites `AGENTS.md` or `AGENT.md` once they exist — both are created only
+    if absent, and otherwise reported as `preserved_canonical`;
+  - never overwrites any other scaffold file the user has modified since Mindwell last
+    wrote it — such files are left alone and reported as `preserved_customized`, never
+    silently dropped or replaced;
+  - safely repairs a scaffold file that is still byte-identical to the last template
+    Mindwell wrote, even across version bumps, via a per-file content hash
+    (`scaffold_hashes`) recorded in `config/installation.json`;
+  - backs up every file it is about to touch before writing anything, to a per-vault
+    directory outside the vault (`config.backup_root`, next to the search index, for
+    the same reason the index lives outside synced folders — see `--no-backup` to
+    skip);
+  - supports `--dry-run` to preview exactly what would be created/updated/left alone
+    before writing, and `--agent-name` to name a missing `AGENT.md`;
+  - rebuilds the index and runs `mindwell doctor` at the end and returns both results;
+  - is idempotent — running it again on an already-current vault changes nothing.
+- `mindwell recommend` now detects an existing vault whose recorded
+  `config/installation.json` version is older than the installed CLI and suggests
+  `mindwell upgrade "<vault>"` instead of `init`/`init --force`. A vault already on the
+  current version is still offered `upgrade` as a safe no-op health/repair check. A
+  brand-new or non-Mindwell existing destination is unaffected and still gets `init` as
+  before.
+- `AGENTS.md`/`BOOTSTRAP.md`/`README.md` document the canonical "just ask your agent to
+  update" recipe: pull or clone the latest tag → reinstall the CLI (`pip install .`) →
+  `mindwell upgrade "<vault>"`. Agents are told to preview with `--dry-run`, show the
+  change summary, and get approval before writing, per the project's existing
+  non-destructive-write discipline.
+
+### Fixed
+
+- `mindwell init --force` no longer overwrites a user-modified `AGENTS.md`/`AGENT.md`
+  or any other scaffold file the user has changed. It still repairs missing files and
+  files that are still byte-identical to what Mindwell last wrote (the same
+  `scaffold_hashes`-based reconciliation `upgrade` uses); a genuinely customized file
+  is left in place and reported under the new `preserved_customized` key in `init`'s
+  JSON output rather than being silently replaced.
+
+### Changed
+
+- `mindwell init`'s JSON output shape changed from a flat `{"created": [...]}` list to
+  `{"created": [...], "updated": [...], "preserved_canonical": [...],
+  "preserved_customized": [...]}`, so callers can see what force-repaired versus what
+  it declined to touch. `created` keeps its previous meaning (file did not exist and
+  was written).
+- `config/installation.json` gained two additive fields: `scaffold_hashes` (per-file
+  content hashes of what Mindwell last wrote, used to detect user modification) and,
+  after an `upgrade`, `last_upgraded_at`.
+
 ## 0.4.0
 
 Fixes for sandboxed-agent setup friction identified in a field report

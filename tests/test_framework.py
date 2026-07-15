@@ -1,3 +1,4 @@
+import hashlib
 import json
 import re
 import sys
@@ -11,7 +12,8 @@ from mindwell.coordinator import CoordinationError, Coordinator
 from mindwell.doctor import inspect as doctor_inspect
 from mindwell.engine import (assemble_context, build, chunks_for, compact_evidence,
                              frontmatter, intent, retrieve, rrf)
-from mindwell.scaffold import init_vault
+from mindwell import scaffold
+from mindwell.scaffold import init_vault, upgrade_vault
 from mindwell.uncertainty import scan
 from mindwell.advisor import recommend
 from mindwell import __version__
@@ -273,6 +275,182 @@ class FrameworkTests(unittest.TestCase):
             (wiki / "x.md").write_text(
                 "> [!gap] Missing owner\n> claim: Owner is unknown.\n> sources: [[source/a]]\n> status: open\n")
             self.assertEqual("Missing owner", scan(vault)[0]["title"])
+
+    def test_upgrade_preserves_customized_agents_md_and_reconciles_version(self):
+        # Reproduces the reported data-loss scenario: a customized AGENTS.md,
+        # an older recorded version, and existing user notes must all survive
+        # `mindwell upgrade` byte-identical while the version reconciles.
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault, profile="personal-ops", automations="core")
+
+            agents_path = vault / "AGENTS.md"
+            agents_path.write_text("Always call me Captain. Never touch crm/.\n",
+                                   encoding="utf-8")
+            notes_path = vault / "daily" / "2026-07-10.md"
+            notes_path.parent.mkdir(parents=True, exist_ok=True)
+            notes_path.write_text("# Notes\n\nCaptain's log.\n", encoding="utf-8")
+
+            install_path = vault / "config" / "installation.json"
+            installation = json.loads(install_path.read_text())
+            installation["mindwell_version"] = "0.1.0"
+            install_path.write_text(json.dumps(installation))
+
+            before_agents = agents_path.read_bytes()
+            before_notes = notes_path.read_bytes()
+
+            result = upgrade_vault(vault)
+
+            self.assertTrue(result["ok"])
+            self.assertEqual(before_agents, agents_path.read_bytes())
+            self.assertEqual(before_notes, notes_path.read_bytes())
+            self.assertEqual("0.1.0", result["from_version"])
+            self.assertEqual(__version__, result["to_version"])
+            self.assertIn("AGENTS.md", result["files"]["preserved_canonical"])
+            self.assertTrue(result["doctor"]["ready"])
+            self.assertTrue(result["doctor"]["checks"]["version_match"]["ok"])
+            self.assertEqual(__version__,
+                             json.loads(install_path.read_text())["mindwell_version"])
+
+    def test_upgrade_is_idempotent_on_an_already_current_vault(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault, profile="personal-ops", automations="core")
+            for _ in range(2):
+                result = upgrade_vault(vault)
+                self.assertFalse(result["changed"])
+                self.assertEqual([], result["files"]["created"])
+                self.assertEqual([], result["files"]["updated"])
+                self.assertEqual([], result["files"]["preserved_customized"])
+                self.assertTrue(result["doctor"]["ready"])
+
+    def test_upgrade_adds_a_missing_managed_scaffold_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault, profile="personal-ops")
+            recipe_path = vault / "recipes" / "weekly-report.md"
+            recipe_path.unlink()
+            result = upgrade_vault(vault)
+            self.assertTrue(recipe_path.exists())
+            self.assertIn("recipes/weekly-report.md", result["files"]["created"])
+
+    def test_upgrade_updates_an_untouched_file_matching_the_prior_baseline(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault)
+            install_path = vault / "config" / "installation.json"
+            installation = json.loads(install_path.read_text())
+
+            memory_path = vault / "MEMORY.md"
+            old_template_text = "# Durable memory (old wording)\n"
+            memory_path.write_text(old_template_text, encoding="utf-8")
+            old_hash = hashlib.sha256(old_template_text.encode("utf-8")).hexdigest()
+            installation.setdefault("scaffold_hashes", {})["MEMORY.md"] = old_hash
+            install_path.write_text(json.dumps(installation))
+
+            result = upgrade_vault(vault)
+            self.assertIn("MEMORY.md", result["files"]["updated"])
+            self.assertEqual(scaffold.FILES["MEMORY.md"], memory_path.read_text())
+
+    def test_upgrade_preserves_a_user_modified_non_canonical_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault)
+            memory_path = vault / "MEMORY.md"
+            memory_path.write_text("# My own memory format\n", encoding="utf-8")
+            result = upgrade_vault(vault)
+            self.assertIn("MEMORY.md", result["files"]["preserved_customized"])
+            self.assertEqual("# My own memory format\n", memory_path.read_text())
+
+    def test_upgrade_without_prior_init_reports_error_and_suggests_init(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            vault.mkdir()
+            (vault / "note.md").write_text("hi", encoding="utf-8")
+            result = upgrade_vault(vault)
+            self.assertFalse(result["ok"])
+            self.assertEqual("no_installation_record", result["error"])
+            self.assertIn("mindwell init", result["message"])
+
+    def test_upgrade_dry_run_makes_no_filesystem_changes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault)
+            memory_path = vault / "MEMORY.md"
+            memory_path.write_text("# Custom\n", encoding="utf-8")
+            install_path = vault / "config" / "installation.json"
+            installation = json.loads(install_path.read_text())
+            installation["mindwell_version"] = "0.1.0"
+            install_path.write_text(json.dumps(installation))
+            before_install = install_path.read_text()
+
+            result = upgrade_vault(vault, dry_run=True)
+
+            self.assertTrue(result["dry_run"])
+            self.assertEqual(before_install, install_path.read_text())
+            self.assertIsNone(result["backup"])
+            self.assertIsNone(result["doctor"])
+            self.assertIn("MEMORY.md", result["files"]["preserved_customized"])
+
+    def test_init_force_never_overwrites_customized_agents_md(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault, profile="personal-ops")
+            agents_path = vault / "AGENTS.md"
+            agents_path.write_text("Always call me Captain. Never touch crm/.\n",
+                                   encoding="utf-8")
+            before = agents_path.read_bytes()
+            result = init_vault(vault, force=True, profile="personal-ops")
+            self.assertEqual(before, agents_path.read_bytes())
+            self.assertIn(agents_path, result["preserved_canonical"])
+
+    def test_init_force_preserves_a_user_modified_scaffold_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault)
+            memory_path = vault / "MEMORY.md"
+            memory_path.write_text("# My own memory\n", encoding="utf-8")
+            result = init_vault(vault, force=True)
+            self.assertEqual("# My own memory\n", memory_path.read_text())
+            self.assertIn(memory_path, result["preserved_customized"])
+
+    def test_init_force_still_repairs_an_untouched_stale_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault)
+            memory_path = vault / "MEMORY.md"
+            install_path = vault / "config" / "installation.json"
+            installation = json.loads(install_path.read_text())
+            old_text = "# stale wording\n"
+            memory_path.write_text(old_text, encoding="utf-8")
+            installation.setdefault("scaffold_hashes", {})["MEMORY.md"] = hashlib.sha256(
+                old_text.encode("utf-8")).hexdigest()
+            install_path.write_text(json.dumps(installation))
+            result = init_vault(vault, force=True)
+            self.assertEqual(scaffold.FILES["MEMORY.md"], memory_path.read_text())
+            self.assertIn(memory_path, result["updated"])
+
+    def test_recommend_suggests_upgrade_for_a_stale_mindwell_vault(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault, profile="personal-ops")
+            install_path = vault / "config" / "installation.json"
+            installation = json.loads(install_path.read_text())
+            installation["mindwell_version"] = "0.0.1"
+            install_path.write_text(json.dumps(installation))
+
+            advice = recommend(vault)
+            self.assertTrue(advice["checks"]["installation"]["needs_upgrade"])
+            self.assertTrue(any(cmd.startswith("mindwell upgrade") for cmd in advice["commands"]))
+            self.assertFalse(any(cmd.startswith("mindwell init") for cmd in advice["commands"]))
+
+    def test_recommend_reports_a_current_mindwell_vault_as_a_safe_noop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault, profile="personal-ops")
+            advice = recommend(vault)
+            self.assertFalse(advice["checks"]["installation"]["needs_upgrade"])
+            self.assertTrue(any(cmd.startswith("mindwell upgrade") for cmd in advice["commands"]))
 
     def test_stale_replica_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

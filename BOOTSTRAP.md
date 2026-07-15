@@ -53,6 +53,25 @@ For an existing vault:
 Add Mindwell to my existing Obsidian vault at <path> using https://github.com/skyflyt/mindwell. Read AGENTS.md and docs/migration.md first. Preserve any existing agent name or ask me to choose one. Make a backup, work non-destructively, and show me the proposed file changes before applying them. Use lexical retrieval unless I approve another provider.
 ```
 
+## Updating an existing installation
+
+Give a coding agent this single prompt to bring an already-set-up vault current:
+
+```text
+Update my Mindwell installation at <VAULT_PATH> to the latest tagged release from
+https://github.com/skyflyt/mindwell. Read AGENTS.md's "Updating an existing
+installation" section and follow it exactly: pull or clone the latest tag, reinstall
+the CLI, then run `mindwell upgrade` against the vault - never `mindwell init` or
+`mindwell init --force` on an existing vault. Show me the change summary before
+writing anything and wait for my approval.
+```
+
+This is safe by construction: `mindwell upgrade` never overwrites `AGENTS.md` or any
+scaffold file you have customized, only adds files a newer release introduces and
+repairs files that are still byte-identical to what Mindwell last wrote, backs up
+everything it touches first, and reconciles the recorded version so `mindwell doctor`
+reports clean. See AGENTS.md for the exact command sequence and safety contract.
+
 ## Expected result
 
 The agent should leave you with:

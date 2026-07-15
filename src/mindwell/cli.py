@@ -9,7 +9,7 @@ from .engine import build, retrieve, OllamaUnavailable
 from .doctor import inspect
 from .config import load_config
 from .guidance import ollama_unreachable_guidance
-from .scaffold import init_vault
+from .scaffold import init_vault, upgrade_vault
 from .uncertainty import compile_registry
 from .automations import write_automation_plan
 from .advisor import recommend
@@ -21,6 +21,7 @@ def main() -> int:
     parser.add_argument("--version", action="version", version=f"%(prog)s {__version__}")
     commands = parser.add_subparsers(dest="command", required=True)
     init = commands.add_parser("init"); init.add_argument("vault", type=Path); init.add_argument("--force", action="store_true"); init.add_argument("--agent-name"); init.add_argument("--profile", choices=("basic", "personal-ops"), default="basic"); init.add_argument("--automations", choices=("none", "core"), default="none"); init.add_argument("--timezone", default="local"); init.add_argument("--private-workspaces", action="store_true"); init.add_argument("--environment", choices=("sandbox", "native"))
+    upgrade = commands.add_parser("upgrade"); upgrade.add_argument("vault", type=Path); upgrade.add_argument("--agent-name"); upgrade.add_argument("--no-backup", action="store_true"); upgrade.add_argument("--dry-run", action="store_true")
     index = commands.add_parser("index"); index.add_argument("vault", type=Path); index.add_argument("--rebuild", action="store_true")
     query = commands.add_parser("retrieve"); query.add_argument("vault", type=Path); query.add_argument("query"); query.add_argument("--mode", choices=("quick", "standard", "deep"), default="standard"); query.add_argument("--explain", action="store_true"); query.add_argument("--no-refresh", action="store_true")
     bench = commands.add_parser("benchmark"); bench.add_argument("vault", type=Path); bench.add_argument("questions", type=Path); bench.add_argument("--mode", default="standard")
@@ -31,10 +32,21 @@ def main() -> int:
     advice = commands.add_parser("recommend"); advice.add_argument("vault", type=Path); advice.add_argument("--prefer-semantic", action="store_true"); advice.add_argument("--basic", action="store_true")
     args = parser.parse_args()
     if args.command == "init":
-        print(json.dumps({"created": [str(p) for p in init_vault(
+        result = init_vault(
             args.vault, args.force, args.agent_name, args.profile,
             args.automations, args.timezone, args.private_workspaces,
-            args.environment)]}, indent=2))
+            args.environment)
+        print(json.dumps({key: [str(p) for p in paths] for key, paths in result.items()},
+                         indent=2))
+    elif args.command == "upgrade":
+        result = upgrade_vault(args.vault, args.agent_name,
+                               backup=not args.no_backup, dry_run=args.dry_run)
+        print(json.dumps(result, indent=2))
+        if not result.get("ok"):
+            return 1
+        doctor_result = result.get("doctor")
+        if doctor_result is not None and not doctor_result.get("ready"):
+            return 1
     elif args.command == "index":
         try:
             print(json.dumps(build(args.vault, args.rebuild), indent=2))

@@ -40,14 +40,32 @@ def load_config(vault: Path) -> dict:
     return config
 
 
-def index_path(vault: Path) -> Path:
-    override = os.environ.get("MINDWELL_INDEX") or os.environ.get("LOBY_INDEX")
-    if override:
-        return Path(override)
-    key = __import__("hashlib").sha256(str(vault.resolve()).encode()).hexdigest()[:16]
+def _cache_root() -> Path:
     if os.name == "nt":
         root = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "mindwell"
     else:
         root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "mindwell"
     root.mkdir(parents=True, exist_ok=True)
-    return root / f"{key}.db"
+    return root
+
+
+def _vault_key(vault: Path) -> str:
+    return __import__("hashlib").sha256(str(vault.resolve()).encode()).hexdigest()[:16]
+
+
+def index_path(vault: Path) -> Path:
+    override = os.environ.get("MINDWELL_INDEX") or os.environ.get("LOBY_INDEX")
+    if override:
+        return Path(override)
+    return _cache_root() / f"{_vault_key(vault)}.db"
+
+
+def backup_root(vault: Path) -> Path:
+    """Per-vault directory for pre-upgrade backups, kept outside the vault
+    itself for the same reason the search index is: OneDrive/Dropbox/iCloud
+    should not sync (or index) Mindwell's own bookkeeping files.
+    """
+    override = os.environ.get("MINDWELL_BACKUPS")
+    root = Path(override) if override else (_cache_root() / f"{_vault_key(vault)}-backups")
+    root.mkdir(parents=True, exist_ok=True)
+    return root

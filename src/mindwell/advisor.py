@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import re
 import sqlite3
 import sys
 import urllib.request
@@ -21,6 +22,10 @@ def _ollama_available(url: str) -> tuple[bool, str]:
         return False, str(exc)
 
 
+def _version_tuple(value: str) -> tuple[int, ...]:
+    return tuple(int(match.group()) for match in re.finditer(r"\d+", str(value)))
+
+
 def recommend(vault: Path, prefer_semantic: bool = False,
               basic: bool = False) -> dict:
     vault = vault.expanduser().resolve()
@@ -35,6 +40,17 @@ def recommend(vault: Path, prefer_semantic: bool = False,
         track = "basic-framework" if basic else "personal-ops"
         profile = "basic" if basic else "personal-ops"
 
+    installation = None
+    install_path = vault / "config" / "installation.json"
+    if install_path.exists():
+        try:
+            installation = json.loads(install_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            installation = None
+    vault_version = installation.get("mindwell_version") if installation else None
+    is_mindwell_vault = track == "existing-vault" and installation is not None
+    needs_upgrade = bool(vault_version and _version_tuple(vault_version) < _version_tuple(__version__))
+
     try:
         con = sqlite3.connect(":memory:")
         con.execute("CREATE VIRTUAL TABLE test_fts USING fts5(body)")
@@ -46,17 +62,34 @@ def recommend(vault: Path, prefer_semantic: bool = False,
     ollama_ok, ollama_value = _ollama_available(ollama_url) if prefer_semantic else (False, "not checked")
     provider = "ollama" if prefer_semantic and ollama_ok else "lexical"
 
-    init = (f'mindwell init "{vault}" --profile {profile} '
-            f'--automations {"core" if profile == "personal-ops" else "none"} '
-            '--timezone local')
-    commands = [init, f'mindwell index "{vault}"', f'mindwell doctor "{vault}"']
-    if provider == "ollama":
-        commands.insert(1, f'mindwell configure "{vault}" --provider ollama')
-        commands[2] += " --rebuild"
+    if is_mindwell_vault:
+        commands = [f'mindwell upgrade "{vault}"', f'mindwell doctor "{vault}"']
+    else:
+        init = (f'mindwell init "{vault}" --profile {profile} '
+                f'--automations {"core" if profile == "personal-ops" else "none"} '
+                '--timezone local')
+        commands = [init, f'mindwell index "{vault}"', f'mindwell doctor "{vault}"']
+        if provider == "ollama":
+            commands.insert(1, f'mindwell configure "{vault}" --provider ollama')
+            commands[2] += " --rebuild"
     python_ok = sys.version_info >= (3, 10)
     warnings = []
     guidance = None
-    if track == "existing-vault":
+    if is_mindwell_vault:
+        if needs_upgrade:
+            warnings.append(
+                f"This vault is on Mindwell {vault_version}; the installed CLI is "
+                f"{__version__}. Use `mindwell upgrade \"{vault}\"` to reconcile it "
+                "safely - it never overwrites AGENTS.md or a customized scaffold file, "
+                "unlike `init --force`. Show the change summary and get approval "
+                "before running it."
+            )
+        else:
+            warnings.append(
+                f"Vault is already on {vault_version}. `mindwell upgrade \"{vault}\"` "
+                "remains safe to run as a no-op health/repair check."
+            )
+    elif track == "existing-vault":
         warnings.append("Back up the vault, show the proposed additions, and ask before init.")
     if not python_ok:
         warnings.append(
@@ -86,7 +119,10 @@ def recommend(vault: Path, prefer_semantic: bool = False,
             "profile": profile,
             "provider": provider,
             "requires_admin": False,
-            "reason": ("Preserve and extend the existing Markdown vault non-destructively."
+            "reason": ("Reconcile the existing Mindwell vault to the installed version "
+                       "without overwriting your customizations."
+                       if is_mindwell_vault else
+                       "Preserve and extend the existing Markdown vault non-destructively."
                        if track == "existing-vault" else
                        "Use the ready-to-work personal second-brain profile."
                        if track == "personal-ops" else
@@ -98,6 +134,8 @@ def recommend(vault: Path, prefer_semantic: bool = False,
             "destination": {"exists": exists, "has_content": has_content,
                             "has_markdown": has_markdown, "value": str(vault)},
             "ollama": {"ok": ollama_ok, "value": ollama_value},
+            "installation": {"managed": is_mindwell_vault, "vault_version": vault_version,
+                             "needs_upgrade": needs_upgrade},
         },
         "commands": commands,
         "warnings": warnings,

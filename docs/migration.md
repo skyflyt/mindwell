@@ -4,6 +4,16 @@ Run `mindwell recommend <vault-path>` after installing the current package. An
 existing non-empty destination is classified as the existing-vault track. Back up the
 vault, review the proposed additions, and approve them before initialization.
 
+This guide is for bringing a vault that has never used Mindwell under the framework
+for the first time. If the vault already has `config/installation.json` (it was set up
+with `mindwell init` at some earlier version), you are not migrating it — you are
+updating it. Use `mindwell upgrade <vault-path>` instead; see the "Updating an
+existing installation" section of `AGENTS.md`. `recommend` tells the two cases apart
+automatically and suggests the right command. Do not run `mindwell init` or
+`mindwell init --force` against a vault that already has an `AGENTS.md` you have
+customized — `init --force` repairs missing/untouched scaffold files but, like
+`upgrade`, never overwrites `AGENTS.md` or a file you have modified.
+
 ## From Loby Framework
 
 Mindwell keeps compatibility with vaults created before the project rename. It reads `config/loby.json`, recognizes `LOBY.md` as a core agent file, honors `LOBY_INDEX`, and installs the `loby` command as a temporary alias. New setups use `config/mindwell.json`, `AGENT.md`, `MINDWELL_INDEX`, and the `mindwell` command.

@@ -1,13 +1,26 @@
 from __future__ import annotations
 
+import hashlib
 import json
 import sys
 from datetime import datetime, timezone as dt_timezone
 from pathlib import Path
 
 from . import __version__
-from .config import DEFAULT_CONFIG
+from .config import DEFAULT_CONFIG, backup_root
 from .automations import write_automation_plan
+
+
+# Files whose content is personal/identity-bearing rather than boilerplate.
+# Mindwell creates them if missing but never overwrites them, with or without
+# --force: AGENTS.md is the user's canonical operating contract and AGENT.md
+# carries the user's chosen agent persona. Every other scaffold file is
+# reconciled by content hash (see _reconcile_file).
+CANONICAL_FILES = {"AGENTS.md", "AGENT.md"}
+
+
+def _sha256(text: str) -> str:
+    return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
 
 def _detect_environment() -> str:
@@ -184,14 +197,13 @@ or what it contains.
 }
 
 
-def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
-               profile: str = "basic", automations: str = "none",
-               timezone: str = "local",
-               private_workspaces: bool = False,
-               environment: str | None = None) -> list[Path]:
-    existing_content = vault.exists() and any(vault.iterdir())
-    vault.mkdir(parents=True, exist_ok=True)
-    created = []
+def _template_files(profile: str, private_workspaces: bool,
+                    agent_name: str | None) -> dict[str, str]:
+    """Build the relative-path -> content map for the current package version.
+
+    Shared by init_vault and upgrade_vault so both always reconcile against
+    exactly the same template set for a given profile.
+    """
     name = agent_name.strip() if agent_name and agent_name.strip() else "Your Agent"
     files = dict(FILES)
     if profile == "personal-ops":
@@ -200,19 +212,112 @@ def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
         files.update(PRIVATE_WORKSPACE_FILES)
         files["AGENTS.md"] = files["AGENTS.md"] + PRIVATE_WORKSPACE_AGENT_RULES
     files["AGENT.md"] = f"""# {name}\n\nYou are a thoughtful work partner. Preserve sources, cite claims, separate current state from history, and keep private data private. Use quick context for simple facts, standard for ordinary work, and deep only for genuine synthesis.\n"""
+    return files
+
+
+def _reconcile_file(vault: Path, relative: str, body: str, scaffold_hashes: dict,
+                    allow_repair: bool, dry_run: bool = False) -> tuple[str, Path]:
+    """Create, repair, or preserve one managed scaffold file.
+
+    Returns (status, path). Status is one of:
+      created             - file did not exist; written now
+      up_to_date           - file already matches the current template
+      updated              - file matched the last-known Mindwell-written
+                             baseline (scaffold_hashes), so it was safe to
+                             bring current
+      preserved_canonical  - AGENTS.md/AGENT.md: identity files, never
+                             overwritten once they exist, regardless of force
+      preserved_customized - file exists, differs from the current template,
+                             and either has no trusted baseline or diverges
+                             from it - treated as user-modified and left alone
+
+    scaffold_hashes is mutated in place (except during dry_run) so callers can
+    persist the updated baseline to config/installation.json afterward.
+    """
+    path = vault / relative
+    new_hash = _sha256(body)
+    if not path.exists():
+        if not dry_run:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_text(body, encoding="utf-8")
+            scaffold_hashes[relative] = new_hash
+        return "created", path
+    if relative in CANONICAL_FILES:
+        return "preserved_canonical", path
+    current_hash = _sha256(path.read_text(encoding="utf-8"))
+    if current_hash == new_hash:
+        if not dry_run:
+            scaffold_hashes[relative] = new_hash
+        return "up_to_date", path
+    baseline = scaffold_hashes.get(relative)
+    if allow_repair and baseline is not None and current_hash == baseline:
+        if not dry_run:
+            path.write_text(body, encoding="utf-8")
+            scaffold_hashes[relative] = new_hash
+        return "updated", path
+    return "preserved_customized", path
+
+
+def _backup_vault(vault: Path, relative_paths: list[str]) -> Path | None:
+    """Snapshot the files upgrade is about to touch before writing anything.
+
+    Stored outside the vault (config.backup_root), matching how the search
+    index is kept out of synced vault folders - a pre-upgrade snapshot is
+    Mindwell bookkeeping, not vault content.
+    """
+    existing = [rel for rel in relative_paths if (vault / rel).exists()]
+    if (vault / "config" / "installation.json").exists():
+        existing.append("config/installation.json")
+    if not existing:
+        return None
+    stamp = datetime.now(dt_timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    destination_root = backup_root(vault) / stamp
+    for rel in existing:
+        source = vault / rel
+        dest = destination_root / rel
+        dest.parent.mkdir(parents=True, exist_ok=True)
+        dest.write_bytes(source.read_bytes())
+    return destination_root
+
+
+def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
+               profile: str = "basic", automations: str = "none",
+               timezone: str = "local",
+               private_workspaces: bool = False,
+               environment: str | None = None) -> dict:
+    existing_content = vault.exists() and any(vault.iterdir())
+    vault.mkdir(parents=True, exist_ok=True)
+    files = _template_files(profile, private_workspaces, agent_name)
+
+    install_path = vault / "config" / "installation.json"
+    existing_installation = {}
+    if install_path.exists():
+        try:
+            existing_installation = json.loads(install_path.read_text(encoding="utf-8"))
+        except (OSError, json.JSONDecodeError):
+            existing_installation = {}
+    scaffold_hashes = dict(existing_installation.get("scaffold_hashes", {}))
+
+    created, updated, preserved_canonical, preserved_customized = [], [], [], []
     for relative, body in files.items():
-        path = vault / relative
-        path.parent.mkdir(parents=True, exist_ok=True)
-        if path.exists() and not force:
-            continue
-        path.write_text(body, encoding="utf-8")
-        created.append(path)
+        status, path = _reconcile_file(vault, relative, body, scaffold_hashes,
+                                       allow_repair=force)
+        if status == "created":
+            created.append(path)
+        elif status == "updated":
+            updated.append(path)
+        elif status == "preserved_canonical":
+            preserved_canonical.append(path)
+        elif status == "preserved_customized":
+            preserved_customized.append(path)
+        # "up_to_date": nothing to report; hash already adopted above.
+
     config_path = vault / "config" / "mindwell.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     if force or not config_path.exists():
         config_path.write_text(json.dumps(DEFAULT_CONFIG, indent=2) + "\n", encoding="utf-8")
         created.append(config_path)
-    install_path = vault / "config" / "installation.json"
+
     if force or not install_path.exists():
         installation = {
             "schema_version": 1,
@@ -232,10 +337,103 @@ def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
             "runner": f'"{sys.executable}" -m mindwell.cli',
             "runner_hint": "python3 -m mindwell.cli (or the mindwell/loby console "
                            "script) from that environment's own install venv",
+            "scaffold_hashes": scaffold_hashes,
         }
         install_path.write_text(json.dumps(installation, indent=2) + "\n",
                                 encoding="utf-8")
         created.append(install_path)
+    elif scaffold_hashes != existing_installation.get("scaffold_hashes", {}):
+        existing_installation["scaffold_hashes"] = scaffold_hashes
+        install_path.write_text(json.dumps(existing_installation, indent=2) + "\n",
+                                encoding="utf-8")
+        updated.append(install_path)
+
     if profile == "personal-ops" or automations != "none":
         created.extend(write_automation_plan(vault, automations, timezone, force))
-    return created
+
+    return {
+        "created": created,
+        "updated": updated,
+        "preserved_canonical": preserved_canonical,
+        "preserved_customized": preserved_customized,
+    }
+
+
+def upgrade_vault(vault: Path, agent_name: str | None = None,
+                  backup: bool = True, dry_run: bool = False) -> dict:
+    """Bring an existing Mindwell-managed vault up to the installed version.
+
+    Never overwrites AGENTS.md/AGENT.md once they exist, and never overwrites
+    any other scaffold file the user has modified since Mindwell last wrote
+    it - only files that are missing or byte-identical to the last-known
+    Mindwell-written baseline are added or updated. See _reconcile_file.
+    """
+    # Import here, not at module scope: engine/doctor are heavier (sqlite,
+    # urllib) and scaffold.py is imported by every CLI invocation including
+    # ones (init, recommend) that never touch either.
+    from .engine import build, OllamaUnavailable
+    from .doctor import inspect
+
+    vault = vault.expanduser().resolve()
+    install_path = vault / "config" / "installation.json"
+    if not vault.is_dir() or not install_path.exists():
+        return {
+            "ok": False,
+            "vault": str(vault),
+            "error": "no_installation_record",
+            "message": (f'"{vault}" has no config/installation.json, so it was '
+                       "never initialized by Mindwell. Run `mindwell init "
+                       f'"{vault}"` for a first-time setup instead of upgrade.'),
+        }
+    try:
+        installation = json.loads(install_path.read_text(encoding="utf-8"))
+    except (OSError, json.JSONDecodeError) as exc:
+        return {"ok": False, "vault": str(vault), "error": "corrupt_installation_record",
+                "message": str(exc)}
+
+    from_version = installation.get("mindwell_version", "unrecorded")
+    profile = installation.get("profile", "basic")
+    private_workspaces = "private-workspaces" in installation.get("optional_features", [])
+    scaffold_hashes = dict(installation.get("scaffold_hashes", {}))
+
+    files = _template_files(profile, private_workspaces, agent_name)
+
+    backup_dir = None
+    if backup and not dry_run:
+        backup_dir = _backup_vault(vault, list(files.keys()))
+
+    buckets = {"created": [], "updated": [], "up_to_date": [],
+              "preserved_canonical": [], "preserved_customized": []}
+    for relative, body in files.items():
+        status, _path = _reconcile_file(vault, relative, body, scaffold_hashes,
+                                        allow_repair=True, dry_run=dry_run)
+        buckets[status].append(relative)
+
+    if not dry_run:
+        installation["mindwell_version"] = __version__
+        installation["scaffold_hashes"] = scaffold_hashes
+        installation["last_upgraded_at"] = datetime.now(dt_timezone.utc).isoformat()
+        install_path.write_text(json.dumps(installation, indent=2) + "\n", encoding="utf-8")
+
+    index_result = None
+    doctor_result = None
+    if not dry_run:
+        try:
+            index_result = {"ok": True, **build(vault, rebuild=True)}
+        except OllamaUnavailable as exc:
+            index_result = {"ok": False, "error": "ollama_unreachable", "message": str(exc)}
+        doctor_result = inspect(vault)
+
+    changed = bool(buckets["created"] or buckets["updated"] or from_version != __version__)
+    return {
+        "ok": True,
+        "vault": str(vault),
+        "dry_run": dry_run,
+        "from_version": from_version,
+        "to_version": __version__,
+        "changed": changed,
+        "backup": str(backup_dir) if backup_dir else None,
+        "files": buckets,
+        "index": index_result,
+        "doctor": doctor_result,
+    }
