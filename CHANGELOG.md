@@ -5,6 +5,14 @@
 Fixes for sandboxed-agent setup friction identified in a field report
 (`docs/SANDBOX_AGENT_FEEDBACK_REVIEW.md`).
 
+**Retrieval tiers, plainly:** lexical search is the default and works on any
+machine out of the box — no local AI needed. Semantic search is an optional
+upgrade, available only where Ollama is installed and reachable; nobody is
+forced onto the local-AI path to use Mindwell. This release also makes the
+transition between the two tiers graceful in both directions: a vault that
+can't reach Ollama now degrades to lexical instead of crashing, and `doctor`
+stops misreporting a lexical-only install as broken.
+
 ### Changed
 
 - Lowered the Python floor from 3.11 to 3.10 (`pyproject.toml`, `doctor.py`,
