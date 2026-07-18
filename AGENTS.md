@@ -98,7 +98,15 @@ to inspect code first, because `mindwell upgrade` is non-destructive by construc
    discipline as any other write to an existing vault, per the project's safety rules.
 5. Report the version reconciliation (`from_version` → `to_version`), any files listed
    under `preserved_customized` (tell the user what they contain and that they were
-   left untouched), and the final `mindwell doctor` result.
+   left untouched), the `backup` path from the upgrade result (so the user knows where
+   the pre-upgrade copies live if they ever want anything back), and the final
+   `mindwell doctor` result.
+6. If the vault's automation schedules are registered with a scheduler
+   (`automations/plan.json` `registration_status: registered`), compare the registered
+   prompts against the updated `automations/prompts/*.md` — an upgrade can refresh
+   those files, and a scheduler that captured the prompt text at registration time
+   will still be running the old wording. Offer to re-register the changed ones; ask
+   before touching any schedule.
 
 `mindwell recommend <vault-path>` already detects this case on its own: if the vault's
 recorded version is older than the installed CLI, it suggests `mindwell upgrade`
