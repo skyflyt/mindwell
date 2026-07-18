@@ -162,7 +162,9 @@ class FrameworkTests(unittest.TestCase):
             config_path = vault / "config" / "mindwell.json"
             config = json.loads(config_path.read_text())
             config["retrieval_provider"] = "ollama"
-            config["ollama_url"] = "http://192.168.1.50:11434"
+            # RFC 5737 documentation address: non-localhost (so the security
+            # notice fires) without tripping privacy_scan's private-ip pattern.
+            config["ollama_url"] = "http://192.0.2.50:11434"
             config_path.write_text(json.dumps(config))
 
             fake_response = MagicMock()
@@ -173,7 +175,7 @@ class FrameworkTests(unittest.TestCase):
             with patch("mindwell.doctor.urllib.request.urlopen", return_value=fake_response):
                 result = doctor_inspect(vault)
             self.assertEqual("semantic", result["mode"])
-            self.assertIn("192.168.1.50", result.get("security_notice", ""))
+            self.assertIn("192.0.2.50", result.get("security_notice", ""))
 
     def test_scaffold_records_environment_and_runner_hint(self):
         with tempfile.TemporaryDirectory() as tmp:
