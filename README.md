@@ -337,8 +337,13 @@ bring the vault current:
 
 ```bash
 mindwell update "<VAULT_PATH>" --dry-run   # preview both layers first
-mindwell update "<VAULT_PATH>"
+mindwell update "<VAULT_PATH>"             # then run it for real
 ```
+
+Run the `--dry-run` first and read its summary — it shows exactly what would change
+in the installed CLI and in the vault (created / updated / left alone) before
+anything is written. Only then run the real command; an agent doing this for you
+should show you that preview and wait for your go-ahead.
 
 The vault step is non-destructive by construction: it never overwrites `AGENTS.md`
 (only creates it if missing), never overwrites any other scaffold file you have
