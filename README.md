@@ -114,6 +114,13 @@ restricted egress allowlist. A downloaded release wheel or ZIP is a convenience 
 humans, not a requirement; it commonly needs additional GitHub asset hosts
 (`objects.githubusercontent.com`/`codeload.github.com`) that stricter allowlists block.
 
+Put the checkout and its virtual environment in a plain local folder — **never inside
+OneDrive, Dropbox, or iCloud**. On many Windows machines `Documents` and `Desktop`
+are cloud-synced; a clone plus venv is thousands of small files that a sync client
+will immediately try to upload. Your vault may live in a synced folder; the Mindwell
+checkout and venv should not (`%LOCALAPPDATA%\mindwell-src` or `~/mindwell-src` are
+good homes).
+
 ### Windows PowerShell
 
 ```powershell
@@ -238,6 +245,11 @@ In an ephemeral sandbox with no durable volume, the index simply rebuilds on the
 first `retrieve` call each session — `build()` reports `changed_files`/`indexed_chunks`
 so you can see the (usually seconds-long, lexical-only) rebuild cost. This is expected
 behavior, not breakage.
+
+`MINDWELL_CACHE` relocates the whole cache directory (per-vault indexes and
+pre-upgrade backups together) instead of one index file; `MINDWELL_BACKUPS`
+relocates just the backup side. The same not-cloud-synced rule applies to all of
+them.
 
 ### Optional Ollama retrieval
 

@@ -1,5 +1,65 @@
 # Changelog
 
+## 0.4.2
+
+Improvements grounded in a week of production use of a mature second-brain vault
+plus a live group-training session where a room of standard Windows users installed
+Mindwell. Three field-proven lessons drive this release: a run stamp alone cannot
+tell "already done" from "started and died"; decisions that aren't written down
+same-day are lost; and a cloned repo plus venv inside OneDrive is a sync storm.
+
+### Changed
+
+- **Run-stamp guards gained a `done:` marker protocol** (all four scheduled
+  automation prompts). The old guard — "if the stamp exists, stop" — has a proven
+  failure mode observed repeatedly in the field: a run that writes its stamp and
+  then dies mid-work silently blocks every retry for the rest of the day. The new
+  protocol: a stamp *with* a `done:` line means completed (stop); a stamp *without*
+  one that is more than two hours old means the earlier run died — say so and take
+  the run over; a fresh one may still be in progress (stop); on completion append
+  `done: <timestamp> — <summary>`; on a deliberate early stop (a required system is
+  unavailable), leave the stamp without `done:` so a later retry can take over. The
+  weekly health check now counts done-less stamps as failed runs, not completed
+  ones, and is told to corroborate before declaring an automation dead from one
+  stale file — on a synced vault a single lagging replica can look stale while
+  everything around it is current.
+- **Decision capture is now prompted for, not assumed.** The weekday-startup prompt
+  surfaces capture gaps (yesterday's meetings or decisions that left no note); the
+  weekly review lists decisions with no written record in `wiki/decisions.md` and
+  closes action items whose own text says DONE/RESOLVED but still sit open. Both
+  prompts also say: if nothing changed since the last run, say so in one line
+  instead of restating — recurring reports that repeat verbatim train people to
+  stop reading them.
+- **`mindwell upgrade` now reconciles the automation prompt files and
+  `REGISTER-WITH-YOUR-AGENT.md`** with the same hash-based
+  create/repair/preserve logic as scaffold files, so prompt improvements (like this
+  release's) actually reach existing vaults. Unmodified prompts from any prior
+  release (v0.3.0–v0.4.1, recognized via pinned historical template hashes) update
+  in place; customized prompts are preserved and reported, exactly like scaffold
+  files. `plan.json` is stateful and is still never reconciled — but a core-bundle
+  vault that lost it gets it recreated. `init` now records these files in
+  `scaffold_hashes`.
+- **`MINDWELL_CACHE`** environment variable relocates the whole Mindwell cache
+  directory (per-vault indexes and pre-upgrade backups) — a durable sandbox scratch
+  volume is one line of configuration now. `MINDWELL_INDEX`/`MINDWELL_BACKUPS`
+  still override the individual paths.
+- The test suite no longer writes into the real user cache. Previously every run
+  left one orphaned per-vault `.db` (and upgrade tests a backups directory) in
+  `%LOCALAPPDATA%\mindwell` / `~/.cache/mindwell` per tempdir vault — observed in
+  the field as ~110 abandoned databases on a dev machine. Tests now isolate via
+  `MINDWELL_CACHE`.
+- **Setup contract (AGENTS.md/README):** the checkout and venv must live in a plain
+  local folder, never inside OneDrive/Dropbox/iCloud (on many Windows machines
+  `Documents`/`Desktop` are synced — a fresh clone there becomes thousands of
+  uploading files; observed live in a training room). Added the Windows PowerShell
+  form of the canonical install, per-user (`winget --scope user`/Microsoft Store)
+  Python+Git guidance for non-admin Windows users, and made "offer to register the
+  automation schedules" an explicit numbered setup step instead of homework.
+- **Existing-vault consent wording tightened:** announcing what you are about to do
+  is not the same as asking. Before writing into an existing vault, show the exact
+  proposed additions and wait for an explicit yes. (A field report praised an agent
+  that "didn't even ask to merge" — impressive, but not the contract.)
+
 ## 0.4.1
 
 Fixes a real data-loss bug found in the field: `mindwell init --force` silently

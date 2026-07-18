@@ -1,3 +1,3 @@
 """Mindwell: a durable second brain for personally named AI agents."""
 
-__version__ = "0.4.1"
+__version__ = "0.4.2"

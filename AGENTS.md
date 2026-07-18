@@ -8,15 +8,31 @@ Read `BOOTSTRAP.md`, `README.md`, and `SECURITY.md` before running commands. Tre
 
 1. Ask for the vault path if the user did not provide it. Ask whether they want to name their agent.
 2. Do not ask the user to choose a numbered level or framework version. Install the latest tagged Mindwell release, then run `mindwell recommend <vault-path>`. If no tagged release exists, explain that `main` is prerelease and ask before using it. Explain the recommended track. Ask before modifying an existing vault or enabling semantic retrieval; otherwise continue with the recommendation.
-3. Detect the operating system. Check for Python 3.10 or newer, Git availability, and write access. Create a project-local virtual environment.
-4. Install from a tag checkout — the canonical, egress-safe agent install:
+3. Detect the operating system. Check for Python 3.10 or newer, Git availability, and write access. On Windows without administrator rights, both install per-user — `winget install --scope user Python.Python.3.12` and `winget install --scope user Git.Git` (or Python from the Microsoft Store) — never ask the user to elevate for these. Create a project-local virtual environment.
+4. Install from a tag checkout — the canonical, egress-safe agent install.
+
+   **Put the checkout and its virtual environment in a plain local folder, never
+   inside OneDrive, Dropbox, or iCloud.** On many Windows machines `Documents` and
+   `Desktop` are cloud-synced, and a clone plus venv is thousands of small files the
+   sync client will immediately try to upload. The *vault* may live in a synced
+   folder; the Mindwell checkout and venv should not.
 
    ```bash
-   git clone https://github.com/skyflyt/mindwell
-   cd mindwell
+   git clone https://github.com/skyflyt/mindwell ~/mindwell-src
+   cd ~/mindwell-src
    git checkout "$(git describe --tags --abbrev=0)"   # latest tagged release
    python3 -m venv .venv
    .venv/bin/python -m pip install .
+   ```
+
+   Windows PowerShell equivalent:
+
+   ```powershell
+   git clone https://github.com/skyflyt/mindwell "$env:LOCALAPPDATA\mindwell-src"
+   cd "$env:LOCALAPPDATA\mindwell-src"
+   git checkout "$(git describe --tags --abbrev=0)"
+   py -3 -m venv .venv
+   .venv\Scripts\python.exe -m pip install .
    ```
 
    This needs only `github.com` and PyPI (`pypi.org`/`files.pythonhosted.org`) egress —
@@ -31,7 +47,8 @@ Read `BOOTSTRAP.md`, `README.md`, and `SECURITY.md` before running commands. Tre
 7. Follow the exact command plan returned by `mindwell recommend`. The normal new-user result is `personal-ops` with lexical retrieval and core automations. Preserve existing files unless the user explicitly approves `--force`. Even with `--force`, `init` never overwrites `AGENTS.md`/`AGENT.md` once they exist, and never overwrites a scaffold file you have modified — see "Updating an existing installation" below for the vault that already has an `AGENTS.md`.
 8. Run `mindwell index <vault-path>`, then `mindwell doctor <vault-path>` so the final health report includes the index.
 9. Verify setup with `mindwell retrieve <vault-path> "What are the rules for maintaining this vault?" --mode standard --explain`.
-10. Report the operating system, provider, files created, index location, verification result, and any policy or permission blocker.
+10. If an automation bundle was installed, offer to register the schedules now, as part of setup — do not leave it as homework. Read `automations/plan.json` and each referenced prompt, show the proposed schedules in the user's local timezone, and ask before registering them in whatever scheduler this AI product supports (`automations/REGISTER-WITH-YOUR-AGENT.md` has the exact script). If the user declines or scheduling is unavailable, say clearly how to do it later.
+11. Report the operating system, provider, files created, index location, verification result, registered schedules, and any policy or permission blocker.
 
 Do not ask users whether they want private external workspaces during ordinary setup,
 and do not add `--private-workspaces` to a recommendation or init command unless the
@@ -46,6 +63,11 @@ them. Do not enable automatic external sending.
 ## Existing vaults
 
 Follow `docs/migration.md`. Add the framework non-destructively. Do not move, rename, or rewrite source notes to match the example structure. Back up the vault before broad changes.
+
+Before writing anything into an existing vault, show the exact proposed additions and
+wait for an explicit yes. Announcing what you are about to do is not the same as
+asking — "I see you have a vault, here is what I am going to do" must end with a
+question, not a write.
 
 ## Updating an existing installation
 
@@ -65,6 +87,8 @@ to inspect code first, because `mindwell upgrade` is non-destructive by construc
      it — those are left alone and listed as `preserved_customized`, not silently
      dropped;
    - adds scaffold files a newer release introduced that are missing from the vault;
+   - brings unmodified automation prompts current too (a customized prompt is
+     preserved and reported like any other user-modified file);
    - backs up every file it is about to touch before writing anything;
    - reconciles `config/installation.json`'s recorded version, rebuilds the index, and
      runs `mindwell doctor` so you get one final health report.

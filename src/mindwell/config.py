@@ -41,7 +41,10 @@ def load_config(vault: Path) -> dict:
 
 
 def _cache_root() -> Path:
-    if os.name == "nt":
+    override = os.environ.get("MINDWELL_CACHE")
+    if override:
+        root = Path(override)
+    elif os.name == "nt":
         root = Path(os.environ.get("LOCALAPPDATA", Path.home())) / "mindwell"
     else:
         root = Path(os.environ.get("XDG_CACHE_HOME", Path.home() / ".cache")) / "mindwell"

@@ -20,6 +20,18 @@ from mindwell import __version__
 
 
 class FrameworkTests(unittest.TestCase):
+    def setUp(self):
+        # Keep every index/backup write inside the test's own tempdir. Without
+        # this, each tempdir-vault build() left an orphaned per-vault .db (and
+        # upgrade tests a -backups dir) in the REAL user cache
+        # (%LOCALAPPDATA%\mindwell / ~/.cache/mindwell) - observed in the field
+        # as ~110 abandoned databases on a dev machine.
+        self._cache_dir = tempfile.TemporaryDirectory(ignore_cleanup_errors=True)
+        env = patch.dict("os.environ", {"MINDWELL_CACHE": self._cache_dir.name})
+        env.start()
+        self.addCleanup(self._cache_dir.cleanup)
+        self.addCleanup(env.stop)
+
     def test_runtime_and_package_versions_match(self):
         project = Path(__file__).parents[1]
         text = (project / "pyproject.toml").read_text()
@@ -451,6 +463,105 @@ class FrameworkTests(unittest.TestCase):
             advice = recommend(vault)
             self.assertFalse(advice["checks"]["installation"]["needs_upgrade"])
             self.assertTrue(any(cmd.startswith("mindwell upgrade") for cmd in advice["commands"]))
+
+    def test_cache_root_honors_mindwell_cache_override(self):
+        from mindwell.config import backup_root, index_path
+        with tempfile.TemporaryDirectory() as tmp:
+            cache = Path(tmp) / "relocated-cache"
+            with patch.dict("os.environ", {"MINDWELL_CACHE": str(cache)}):
+                vault = Path(tmp) / "vault"
+                self.assertEqual(cache, index_path(vault).parent)
+                self.assertEqual(cache, backup_root(vault).parent)
+
+    def test_automation_prompts_use_done_marker_stamp_guard(self):
+        from mindwell.automations import CORE_TASKS, PROMPTS
+        for task in CORE_TASKS:
+            prompt = PROMPTS[task["id"]]
+            self.assertIn(f'automations/runs/{task["id"]}-YYYY-MM-DD.md', prompt)
+            self.assertIn("done:", prompt)
+            # The stamp-then-die takeover rule - a dead stamp must not block.
+            self.assertIn("died mid-work", prompt)
+        health = PROMPTS["weekly-health-check"]
+        self.assertIn("started and never finished", health)
+        self.assertIn("corroborate", health)
+
+    def test_weekly_review_prompts_for_unwritten_decisions(self):
+        from mindwell.automations import PROMPTS
+        self.assertIn("wiki/decisions.md", PROMPTS["weekly-review"])
+        self.assertIn("capture gaps", PROMPTS["weekday-startup"])
+
+    def test_init_records_automation_template_hashes(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp)
+            init_vault(vault, profile="personal-ops", automations="core")
+            installation = json.loads(
+                (vault / "config/installation.json").read_text())
+            hashes = installation["scaffold_hashes"]
+            self.assertIn("automations/prompts/weekday-startup.md", hashes)
+            self.assertIn("automations/REGISTER-WITH-YOUR-AGENT.md", hashes)
+            self.assertNotIn("automations/plan.json", hashes)
+
+    def test_upgrade_refreshes_an_unmodified_automation_prompt(self):
+        from mindwell import automations
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault, profile="personal-ops", automations="core")
+            prompt_rel = "automations/prompts/weekday-startup.md"
+            prompt_path = vault / prompt_rel
+
+            # Simulate a vault whose prompt is an older release's template:
+            # unknown to scaffold_hashes but present in the legacy-hash table.
+            old_template = "# Weekday second-brain startup (older release)\n"
+            prompt_path.write_text(old_template, encoding="utf-8")
+            install_path = vault / "config" / "installation.json"
+            installation = json.loads(install_path.read_text())
+            installation["scaffold_hashes"].pop(prompt_rel, None)
+            install_path.write_text(json.dumps(installation))
+
+            legacy = {prompt_rel: {hashlib.sha256(
+                old_template.encode("utf-8")).hexdigest()}}
+            with patch.dict(automations.LEGACY_TEMPLATE_HASHES, legacy):
+                result = upgrade_vault(vault)
+
+            self.assertIn(prompt_rel, result["files"]["updated"])
+            self.assertEqual(automations.PROMPTS["weekday-startup"],
+                             prompt_path.read_text(encoding="utf-8"))
+
+    def test_legacy_hash_table_pins_the_shipped_release_templates(self):
+        # These digests are what v0.3.0-v0.4.1 actually wrote (rendered from
+        # each tag's automations.py). If they drift, upgrade silently stops
+        # recognizing real vaults in the field as unmodified.
+        from mindwell.automations import LEGACY_TEMPLATE_HASHES
+        self.assertIn(
+            "e3e5653e250a0e206d2e9b7143cb021dc34b968e2d13a801cd0258dbe60b9ddf",
+            LEGACY_TEMPLATE_HASHES["automations/prompts/weekday-startup.md"])
+        self.assertIn(
+            "5ce8bccba0943e8623c0bf391c9d52373d359fa8ddc5ab679a143d729ff0ac41",
+            LEGACY_TEMPLATE_HASHES["automations/prompts/weekly-health-check.md"])
+
+    def test_upgrade_preserves_a_customized_automation_prompt(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault, profile="personal-ops", automations="core")
+            prompt_rel = "automations/prompts/weekly-review.md"
+            prompt_path = vault / prompt_rel
+            custom = "# My review ritual\n\nOnly review what I tag #review.\n"
+            prompt_path.write_text(custom, encoding="utf-8")
+            result = upgrade_vault(vault)
+            self.assertIn(prompt_rel, result["files"]["preserved_customized"])
+            self.assertEqual(custom, prompt_path.read_text(encoding="utf-8"))
+
+    def test_upgrade_heals_a_missing_automation_plan(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault, profile="personal-ops", automations="core")
+            plan_path = vault / "automations" / "plan.json"
+            plan_path.unlink()
+            result = upgrade_vault(vault)
+            self.assertTrue(plan_path.exists())
+            self.assertIn("automations/plan.json", result["files"]["created"])
+            self.assertEqual("not_registered",
+                             json.loads(plan_path.read_text())["registration_status"])
 
     def test_stale_replica_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:

@@ -8,7 +8,8 @@ from pathlib import Path
 
 from . import __version__
 from .config import DEFAULT_CONFIG, backup_root
-from .automations import write_automation_plan
+from .automations import (LEGACY_TEMPLATE_HASHES, automation_template_files,
+                          write_automation_plan)
 
 
 # Files whose content is personal/identity-bearing rather than boilerplate.
@@ -216,7 +217,8 @@ def _template_files(profile: str, private_workspaces: bool,
 
 
 def _reconcile_file(vault: Path, relative: str, body: str, scaffold_hashes: dict,
-                    allow_repair: bool, dry_run: bool = False) -> tuple[str, Path]:
+                    allow_repair: bool, dry_run: bool = False,
+                    legacy_hashes: set[str] | None = None) -> tuple[str, Path]:
     """Create, repair, or preserve one managed scaffold file.
 
     Returns (status, path). Status is one of:
@@ -250,7 +252,12 @@ def _reconcile_file(vault: Path, relative: str, body: str, scaffold_hashes: dict
             scaffold_hashes[relative] = new_hash
         return "up_to_date", path
     baseline = scaffold_hashes.get(relative)
-    if allow_repair and baseline is not None and current_hash == baseline:
+    # legacy_hashes covers files written by a release that predates
+    # scaffold_hashes tracking for them: byte-identical to a known historical
+    # template means unmodified, so repairing is as safe as a baseline match.
+    known_unmodified = ((baseline is not None and current_hash == baseline)
+                        or (legacy_hashes is not None and current_hash in legacy_hashes))
+    if allow_repair and known_unmodified:
         if not dry_run:
             path.write_text(body, encoding="utf-8")
             scaffold_hashes[relative] = new_hash
@@ -318,6 +325,13 @@ def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
         config_path.write_text(json.dumps(DEFAULT_CONFIG, indent=2) + "\n", encoding="utf-8")
         created.append(config_path)
 
+    # Written before installation.json so the automation templates' hashes
+    # land in scaffold_hashes and stay reconcilable by `mindwell upgrade`.
+    automation_files: list[Path] = []
+    if profile == "personal-ops" or automations != "none":
+        automation_files = write_automation_plan(vault, automations, timezone,
+                                                 force, scaffold_hashes)
+
     if force or not install_path.exists():
         installation = {
             "schema_version": 1,
@@ -348,8 +362,7 @@ def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
                                 encoding="utf-8")
         updated.append(install_path)
 
-    if profile == "personal-ops" or automations != "none":
-        created.extend(write_automation_plan(vault, automations, timezone, force))
+    created.extend(automation_files)
 
     return {
         "created": created,
@@ -394,9 +407,14 @@ def upgrade_vault(vault: Path, agent_name: str | None = None,
     from_version = installation.get("mindwell_version", "unrecorded")
     profile = installation.get("profile", "basic")
     private_workspaces = "private-workspaces" in installation.get("optional_features", [])
+    bundle = installation.get("automation_bundle", "none")
     scaffold_hashes = dict(installation.get("scaffold_hashes", {}))
 
     files = _template_files(profile, private_workspaces, agent_name)
+    # Automation prompts and the registration guide are templates too; newer
+    # releases improve them (e.g. the run-stamp done-marker protocol), and an
+    # unmodified copy should ride along on upgrade like any scaffold file.
+    files.update(automation_template_files(bundle))
 
     backup_dir = None
     if backup and not dry_run:
@@ -406,8 +424,17 @@ def upgrade_vault(vault: Path, agent_name: str | None = None,
               "preserved_canonical": [], "preserved_customized": []}
     for relative, body in files.items():
         status, _path = _reconcile_file(vault, relative, body, scaffold_hashes,
-                                        allow_repair=True, dry_run=dry_run)
+                                        allow_repair=True, dry_run=dry_run,
+                                        legacy_hashes=LEGACY_TEMPLATE_HASHES.get(relative))
         buckets[status].append(relative)
+
+    # plan.json is stateful (registration_status, scheduler task IDs), so it is
+    # never reconciled - but a core-bundle vault that lost it gets it back.
+    if (bundle != "none" and not dry_run
+            and not (vault / "automations" / "plan.json").exists()):
+        write_automation_plan(vault, bundle, force=False,
+                              scaffold_hashes=scaffold_hashes)
+        buckets["created"].append("automations/plan.json")
 
     if not dry_run:
         installation["mindwell_version"] = __version__
