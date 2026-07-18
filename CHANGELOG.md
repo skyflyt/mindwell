@@ -1,5 +1,48 @@
 # Changelog
 
+## 0.4.3
+
+One command to update everything, and one command to undo it. Built for the
+first cohort of non-technical users: "update my Mindwell" should never require
+knowing that a package layer and a vault layer exist.
+
+### Added
+
+- **`mindwell update <vault>`** — the all-in-one updater. In one invocation it:
+  fetches the newest tagged release into a managed cache checkout (or uses
+  `--source <checkout>` for offline/dev machines), upgrades the installed
+  package with pip into the environment running the command (verified safe on
+  Windows even when invoked through `mindwell.exe` — pip stashes the in-use
+  launcher via rename), then runs the vault reconcile **in a fresh child
+  interpreter so it executes under the just-installed version**, not the code
+  loaded in the running process. Every `upgrade` guarantee carries through:
+  never overwrites `AGENTS.md`/`AGENT.md` or any user-modified file, backs up
+  every touched file first, idempotent, ends with `mindwell doctor`. It never
+  downgrades (an installed version newer than the latest tag is left alone,
+  with a note), `--dry-run` previews both layers without changing anything,
+  a pip failure stops the run *before* the vault is touched ("nothing is
+  half-applied"), and the result includes a `post_steps` reminder when the
+  vault's automation schedules are registered with a scheduler whose prompt
+  copies may now be stale.
+- **`mindwell backups <vault>`** — lists the vault's pre-upgrade snapshots
+  (stamp, date, file count), newest first, from the cache-side backup
+  directory upgrades have always written.
+- **`mindwell restore <vault> [--backup STAMP] [--yes]`** — one-command
+  recovery from any of those snapshots. Preview by default: without `--yes` it
+  only reports which files differ and writes nothing. With `--yes` it first
+  snapshots the current state of every file it is about to change (so a
+  restore is itself undoable the same way), then restores. Files already
+  identical to the backup are reported `unchanged` and left alone.
+
+### Changed
+
+- `AGENTS.md`'s "Updating an existing installation" contract now leads with
+  the single `mindwell update` command (dry-run preview → approval → run →
+  report versions, preserved files, backup path, doctor, post-steps), keeps
+  the manual two-step as the fallback for CLIs that predate `update`, and
+  documents the `backups`/`restore` recovery path. `BOOTSTRAP.md`'s paste-able
+  update prompt and the README's update section match.
+
 ## 0.4.2
 
 Improvements grounded in a week of production use of a mature second-brain vault

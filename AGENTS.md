@@ -73,44 +73,55 @@ question, not a write.
 
 When the user asks to update, upgrade, or refresh Mindwell itself (not their vault
 content) — phrasings like "update my Mindwell to the latest" or "bring this vault
-current" — this is the canonical recipe, and it is safe to run without asking the user
-to inspect code first, because `mindwell upgrade` is non-destructive by construction:
+current" — the canonical way is ONE command (CLI 0.4.3 or newer):
 
-1. Pull the latest changes (`git pull`) in the existing checkout, or clone fresh and
-   check out the newest tag as in "Fresh setup" above, if no local checkout exists.
-2. Reinstall the CLI: `.venv/bin/python -m pip install .` (or the equivalent
-   `.venv\Scripts\python.exe -m pip install .` on Windows) from that checkout.
-3. Run `mindwell upgrade "<vault-path>"` against the vault — never `mindwell init` or
-   `mindwell init --force` on a vault that already has an `AGENTS.md`. `upgrade`:
-   - never overwrites `AGENTS.md` or `AGENT.md` — it only creates them if missing;
-   - never overwrites any other scaffold file you have modified since Mindwell wrote
-     it — those are left alone and listed as `preserved_customized`, not silently
-     dropped;
-   - adds scaffold files a newer release introduced that are missing from the vault;
-   - brings unmodified automation prompts current too (a customized prompt is
-     preserved and reported like any other user-modified file);
-   - backs up every file it is about to touch before writing anything;
-   - reconciles `config/installation.json`'s recorded version, rebuilds the index, and
-     runs `mindwell doctor` so you get one final health report.
-4. Before running step 3 for real, run `mindwell upgrade "<vault-path>" --dry-run`
-   first, show the user the JSON change summary (what would be created/updated/left
-   alone), and get their approval — the same "show the proposed changes and ask"
-   discipline as any other write to an existing vault, per the project's safety rules.
-5. Report the version reconciliation (`from_version` → `to_version`), any files listed
-   under `preserved_customized` (tell the user what they contain and that they were
-   left untouched), the `backup` path from the upgrade result (so the user knows where
-   the pre-upgrade copies live if they ever want anything back), and the final
-   `mindwell doctor` result.
-6. If the vault's automation schedules are registered with a scheduler
-   (`automations/plan.json` `registration_status: registered`), compare the registered
-   prompts against the updated `automations/prompts/*.md` — an upgrade can refresh
-   those files, and a scheduler that captured the prompt text at registration time
-   will still be running the old wording. Offer to re-register the changed ones; ask
-   before touching any schedule.
+1. Preview both layers and show the user the JSON summary:
 
-`mindwell recommend <vault-path>` already detects this case on its own: if the vault's
-recorded version is older than the installed CLI, it suggests `mindwell upgrade`
-instead of `init`. Trust that suggestion over improvising an `init --force`.
+   ```bash
+   mindwell update "<vault-path>" --dry-run
+   ```
+
+2. After their approval, run it for real:
+
+   ```bash
+   mindwell update "<vault-path>"
+   ```
+
+   This fetches the latest tagged release into a managed cache checkout, upgrades the
+   installed package with pip into the very environment running the command (it never
+   downgrades — a dev install newer than the latest tag is left alone with a note),
+   then runs the vault reconcile in a fresh interpreter so it executes under the NEW
+   version. Every `upgrade` guarantee applies: never overwrites `AGENTS.md`/`AGENT.md`
+   or any file the user has modified (those are listed as `preserved_customized`, not
+   silently dropped); adds files a newer release introduced; backs up every file it is
+   about to touch before writing anything; idempotent; ends with `mindwell doctor`. A
+   pip failure stops the run before the vault is touched — nothing is half-applied.
+
+3. Report from the result JSON: `cli.installed_version` → `cli.available_version`, the
+   vault's `from_version` → `to_version`, every `preserved_customized` file (tell the
+   user what it contains and that it was left untouched), the `vault_upgrade.backup`
+   path (where the pre-upgrade copies live), the final `doctor` result, and any
+   `post_steps` — when the vault's schedules are registered with a scheduler, an
+   upgrade can refresh `automations/prompts/*.md` while the scheduler keeps running
+   the prompt text it captured at registration; offer to re-register the changed
+   ones, and ask before touching any schedule.
+
+4. Recovery, if the user ever wants something back: `mindwell backups "<vault-path>"`
+   lists the pre-upgrade snapshots; `mindwell restore "<vault-path>"` previews a
+   restore from the most recent one (add `--backup <stamp>` to pick another) and
+   writes nothing until `--yes` — and even then it snapshots the current state first,
+   so a restore is itself undoable the same way.
+
+If the installed CLI predates `update` (0.4.2 or older — argparse reports an invalid
+choice), do the manual two-step once, after which `update` exists: pull or clone the
+latest tag as in "Fresh setup", reinstall with `.venv/bin/python -m pip install .`
+(Windows: `.venv\Scripts\python.exe -m pip install .`), then run
+`mindwell upgrade "<vault-path>" --dry-run`, show the summary, get approval, and run
+`mindwell upgrade "<vault-path>"`. Never run `mindwell init` or `mindwell init
+--force` on a vault that already has an `AGENTS.md`.
+
+`mindwell recommend <vault-path>` already detects a stale vault on its own and
+suggests `upgrade` instead of `init`. Trust that suggestion over improvising.
 
 ## Sandboxed and cloud agents
 

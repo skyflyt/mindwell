@@ -563,6 +563,167 @@ class FrameworkTests(unittest.TestCase):
             self.assertEqual("not_registered",
                              json.loads(plan_path.read_text())["registration_status"])
 
+    def _fake_backup(self, vault, stamp, files):
+        from mindwell.config import backup_root
+        root = backup_root(vault) / stamp
+        for rel, body in files.items():
+            dest = root / rel
+            dest.parent.mkdir(parents=True, exist_ok=True)
+            dest.write_text(body, encoding="utf-8")
+        return root
+
+    def test_backups_lists_snapshots_newest_first(self):
+        from mindwell.scaffold import list_backups
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault)
+            self._fake_backup(vault, "20260701T010101Z", {"MEMORY.md": "a"})
+            self._fake_backup(vault, "20260715T010101Z", {"MEMORY.md": "b", "USER.md": "c"})
+            entries = list_backups(vault)
+            self.assertEqual(["20260715T010101Z", "20260701T010101Z"],
+                             [e["stamp"] for e in entries])
+            self.assertEqual(2, entries[0]["file_count"])
+            self.assertEqual("2026-07-15T01:01:01Z", entries[0]["created"])
+
+    def test_restore_previews_by_default_and_writes_nothing(self):
+        from mindwell.scaffold import restore_backup
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault)
+            self._fake_backup(vault, "20260715T010101Z", {"MEMORY.md": "# old memory\n"})
+            current = (vault / "MEMORY.md").read_text(encoding="utf-8")
+            result = restore_backup(vault)
+            self.assertTrue(result["ok"])
+            self.assertFalse(result["applied"])
+            self.assertEqual(["MEMORY.md"], result["would_restore"])
+            self.assertIn("--yes", result["note"])
+            self.assertEqual(current, (vault / "MEMORY.md").read_text(encoding="utf-8"))
+
+    def test_restore_applies_and_snapshots_the_pre_restore_state(self):
+        from mindwell.scaffold import restore_backup
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault)
+            before = (vault / "MEMORY.md").read_text(encoding="utf-8")
+            self._fake_backup(vault, "20260715T010101Z", {"MEMORY.md": "# old memory\n"})
+            result = restore_backup(vault, apply=True)
+            self.assertTrue(result["applied"])
+            self.assertEqual(["MEMORY.md"], result["restored"])
+            self.assertEqual("# old memory\n",
+                             (vault / "MEMORY.md").read_text(encoding="utf-8"))
+            pre = Path(result["pre_restore_backup"]) / "MEMORY.md"
+            self.assertEqual(before, pre.read_text(encoding="utf-8"))
+
+    def test_restore_rejects_an_unknown_stamp_and_reports_available(self):
+        from mindwell.scaffold import restore_backup
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault)
+            self._fake_backup(vault, "20260715T010101Z", {"MEMORY.md": "x"})
+            result = restore_backup(vault, stamp="20990101T000000Z")
+            self.assertFalse(result["ok"])
+            self.assertEqual("unknown_backup", result["error"])
+            self.assertEqual(["20260715T010101Z"], result["available"])
+
+    def test_restore_with_no_backups_is_a_clean_error(self):
+        from mindwell.scaffold import restore_backup
+        with tempfile.TemporaryDirectory() as tmp:
+            vault = Path(tmp) / "vault"
+            init_vault(vault)
+            result = restore_backup(vault)
+            self.assertFalse(result["ok"])
+            self.assertEqual("no_backups", result["error"])
+
+    def test_updater_never_downgrades_and_detects_current(self):
+        from mindwell.updater import decide_cli_action
+        self.assertEqual("install", decide_cli_action("0.4.2", "0.4.3"))
+        self.assertEqual("already-current", decide_cli_action("0.4.3", "0.4.3"))
+        self.assertEqual("skip-newer-installed", decide_cli_action("0.5.0", "0.4.3"))
+
+    def test_updater_resolves_a_local_source_without_git(self):
+        from mindwell.updater import resolve_source
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "checkout"
+            src.mkdir()
+            (src / "pyproject.toml").write_text('version = "9.9.9"\n', encoding="utf-8")
+            resolved = resolve_source(str(src))
+            self.assertTrue(resolved["ok"])
+            self.assertEqual("9.9.9", resolved["version"])
+            bad = resolve_source(tmp)
+            self.assertFalse(bad["ok"])
+            self.assertEqual("bad_source", bad["error"])
+
+    def test_update_dry_run_skips_pip_and_previews_both_layers(self):
+        from mindwell import updater
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "checkout"
+            src.mkdir()
+            (src / "pyproject.toml").write_text('version = "9.9.9"\n', encoding="utf-8")
+            vault = Path(tmp) / "vault"
+            init_vault(vault)
+            with patch.object(updater, "pip_install") as pip, \
+                 patch.object(updater, "run_vault_upgrade",
+                              return_value={"ok": True, "dry_run": True}) as child:
+                result = updater.update(vault, source=str(src), dry_run=True)
+            pip.assert_not_called()
+            child.assert_called_once()
+            self.assertTrue(child.call_args[0][1])  # dry_run forwarded
+            self.assertTrue(result["ok"])
+            self.assertEqual("install", result["cli"]["action"])
+            self.assertIn("dry run", result["cli"]["note"])
+
+    def test_update_stops_before_the_vault_when_pip_fails(self):
+        from mindwell import updater
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "checkout"
+            src.mkdir()
+            (src / "pyproject.toml").write_text('version = "9.9.9"\n', encoding="utf-8")
+            vault = Path(tmp) / "vault"
+            init_vault(vault)
+            with patch.object(updater, "pip_install",
+                              return_value={"ok": False, "error": "boom"}), \
+                 patch.object(updater, "run_vault_upgrade") as child:
+                result = updater.update(vault, source=str(src))
+            child.assert_not_called()
+            self.assertFalse(result["ok"])
+            self.assertEqual("pip-install", result["phase"])
+            self.assertIn("Nothing is half-applied", result["message"])
+
+    def test_update_already_current_skips_pip_but_still_reconciles_the_vault(self):
+        from mindwell import updater
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "checkout"
+            src.mkdir()
+            (src / "pyproject.toml").write_text(f'version = "{__version__}"\n',
+                                                encoding="utf-8")
+            vault = Path(tmp) / "vault"
+            init_vault(vault)
+            with patch.object(updater, "pip_install") as pip, \
+                 patch.object(updater, "run_vault_upgrade",
+                              return_value={"ok": True}) as child:
+                result = updater.update(vault, source=str(src))
+            pip.assert_not_called()
+            child.assert_called_once()
+            self.assertTrue(result["ok"])
+            self.assertEqual("already-current", result["cli"]["action"])
+
+    def test_update_surfaces_the_registered_schedule_reminder(self):
+        from mindwell import updater
+        with tempfile.TemporaryDirectory() as tmp:
+            src = Path(tmp) / "checkout"
+            src.mkdir()
+            (src / "pyproject.toml").write_text(f'version = "{__version__}"\n',
+                                                encoding="utf-8")
+            vault = Path(tmp) / "vault"
+            init_vault(vault, profile="personal-ops", automations="core")
+            plan_path = vault / "automations" / "plan.json"
+            plan = json.loads(plan_path.read_text())
+            plan["registration_status"] = "registered"
+            plan_path.write_text(json.dumps(plan))
+            with patch.object(updater, "run_vault_upgrade", return_value={"ok": True}):
+                result = updater.update(vault, source=str(src))
+            self.assertTrue(any("re-register" in step for step in result["post_steps"]))
+
     def test_stale_replica_is_rejected(self):
         with tempfile.TemporaryDirectory() as tmp:
             root = Path(tmp); shared = root / "shared"

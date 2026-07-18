@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
 import sys
 from datetime import datetime, timezone as dt_timezone
 from pathlib import Path
@@ -464,3 +465,94 @@ def upgrade_vault(vault: Path, agent_name: str | None = None,
         "index": index_result,
         "doctor": doctor_result,
     }
+
+
+_BACKUP_STAMP_RE = re.compile(r"^\d{8}T\d{6}Z$")
+
+
+def list_backups(vault: Path) -> list[dict]:
+    """Pre-upgrade snapshots for this vault, newest first. Each entry is one
+    timestamped directory under config.backup_root written by _backup_vault
+    before an upgrade/restore touched anything."""
+    vault = vault.expanduser().resolve()
+    root = backup_root(vault)
+    entries = []
+    for candidate in sorted(root.iterdir(), reverse=True):
+        if not candidate.is_dir() or not _BACKUP_STAMP_RE.match(candidate.name):
+            continue
+        files = sorted(p.relative_to(candidate).as_posix()
+                       for p in candidate.rglob("*") if p.is_file())
+        stamp = candidate.name
+        created = (f"{stamp[0:4]}-{stamp[4:6]}-{stamp[6:8]}T"
+                   f"{stamp[9:11]}:{stamp[11:13]}:{stamp[13:15]}Z")
+        entries.append({"stamp": stamp, "created": created,
+                        "path": str(candidate), "file_count": len(files),
+                        "files": files})
+    return entries
+
+
+def restore_backup(vault: Path, stamp: str | None = None,
+                   apply: bool = False) -> dict:
+    """Restore vault files from a pre-upgrade backup. Preview by default:
+    nothing is written unless apply=True (the CLI's --yes). Before writing,
+    the CURRENT state of every file about to change is itself backed up, so a
+    restore is as reversible as the upgrade it undoes. Files identical to the
+    backup are left alone and reported as unchanged."""
+    vault = vault.expanduser().resolve()
+    backups = list_backups(vault)
+    if not backups:
+        return {"ok": False, "vault": str(vault), "error": "no_backups",
+                "message": f"No backups recorded for this vault under {backup_root(vault)}."}
+    if stamp is None:
+        chosen = backups[0]
+    else:
+        chosen = next((b for b in backups if b["stamp"] == stamp), None)
+        if chosen is None:
+            return {"ok": False, "vault": str(vault), "error": "unknown_backup",
+                    "message": f"No backup stamped {stamp!r}. Run `mindwell backups` "
+                               "to list the available stamps.",
+                    "available": [b["stamp"] for b in backups]}
+
+    backup_dir = Path(chosen["path"])
+    would_restore, unchanged = [], []
+    for rel in chosen["files"]:
+        saved = (backup_dir / rel).read_bytes()
+        target = vault / rel
+        if target.exists() and target.read_bytes() == saved:
+            unchanged.append(rel)
+        else:
+            would_restore.append(rel)
+
+    result = {
+        "ok": True,
+        "vault": str(vault),
+        "backup": {"stamp": chosen["stamp"], "created": chosen["created"],
+                   "path": chosen["path"]},
+        "applied": False,
+        "restored": [],
+        "would_restore": would_restore,
+        "unchanged": unchanged,
+    }
+    if not would_restore:
+        result["note"] = "Vault already matches this backup - nothing to restore."
+        return result
+    if not apply:
+        result["note"] = ("Preview only - nothing was written. Re-run with --yes "
+                          f"to restore these {len(would_restore)} file(s).")
+        return result
+
+    pre_restore = _backup_vault(vault, would_restore)
+    for rel in would_restore:
+        target = vault / rel
+        target.parent.mkdir(parents=True, exist_ok=True)
+        target.write_bytes((backup_dir / rel).read_bytes())
+    result["applied"] = True
+    result["restored"] = would_restore
+    result["would_restore"] = []
+    result["pre_restore_backup"] = str(pre_restore) if pre_restore else None
+    result["note"] = ("Restored. The pre-restore state was itself backed up "
+                      "(pre_restore_backup), so this restore can be undone the "
+                      "same way. Run `mindwell doctor` to re-check health; "
+                      "`mindwell upgrade` will re-apply the current version's "
+                      "templates if you restore-then-upgrade.")
+    return result

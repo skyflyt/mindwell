@@ -9,7 +9,8 @@ from .engine import build, retrieve, OllamaUnavailable
 from .doctor import inspect
 from .config import load_config
 from .guidance import ollama_unreachable_guidance
-from .scaffold import init_vault, upgrade_vault
+from .scaffold import init_vault, list_backups, restore_backup, upgrade_vault
+from .updater import update as run_update
 from .uncertainty import compile_registry
 from .automations import write_automation_plan
 from .advisor import recommend
@@ -22,6 +23,9 @@ def main() -> int:
     commands = parser.add_subparsers(dest="command", required=True)
     init = commands.add_parser("init"); init.add_argument("vault", type=Path); init.add_argument("--force", action="store_true"); init.add_argument("--agent-name"); init.add_argument("--profile", choices=("basic", "personal-ops"), default="basic"); init.add_argument("--automations", choices=("none", "core"), default="none"); init.add_argument("--timezone", default="local"); init.add_argument("--private-workspaces", action="store_true"); init.add_argument("--environment", choices=("sandbox", "native"))
     upgrade = commands.add_parser("upgrade"); upgrade.add_argument("vault", type=Path); upgrade.add_argument("--agent-name"); upgrade.add_argument("--no-backup", action="store_true"); upgrade.add_argument("--dry-run", action="store_true")
+    updater = commands.add_parser("update", help="all-in-one: fetch the latest release, upgrade the installed CLI package, then run the vault upgrade"); updater.add_argument("vault", type=Path); updater.add_argument("--source", help="use this local Mindwell checkout instead of fetching from GitHub"); updater.add_argument("--dry-run", action="store_true")
+    backups = commands.add_parser("backups", help="list this vault's pre-upgrade backups, newest first"); backups.add_argument("vault", type=Path)
+    restore = commands.add_parser("restore", help="restore vault files from a pre-upgrade backup (preview unless --yes)"); restore.add_argument("vault", type=Path); restore.add_argument("--backup", help="backup stamp to restore from (default: most recent)"); restore.add_argument("--yes", action="store_true", help="actually write; without it this is a preview")
     index = commands.add_parser("index"); index.add_argument("vault", type=Path); index.add_argument("--rebuild", action="store_true")
     query = commands.add_parser("retrieve"); query.add_argument("vault", type=Path); query.add_argument("query"); query.add_argument("--mode", choices=("quick", "standard", "deep"), default="standard"); query.add_argument("--explain", action="store_true"); query.add_argument("--no-refresh", action="store_true")
     bench = commands.add_parser("benchmark"); bench.add_argument("vault", type=Path); bench.add_argument("questions", type=Path); bench.add_argument("--mode", default="standard")
@@ -46,6 +50,20 @@ def main() -> int:
             return 1
         doctor_result = result.get("doctor")
         if doctor_result is not None and not doctor_result.get("ready"):
+            return 1
+    elif args.command == "update":
+        result = run_update(args.vault, source=args.source, dry_run=args.dry_run)
+        print(json.dumps(result, indent=2))
+        if not result.get("ok"):
+            return 1
+    elif args.command == "backups":
+        entries = list_backups(args.vault)
+        print(json.dumps({"vault": str(args.vault), "backups": entries,
+                          "count": len(entries)}, indent=2))
+    elif args.command == "restore":
+        result = restore_backup(args.vault, stamp=args.backup, apply=args.yes)
+        print(json.dumps(result, indent=2))
+        if not result.get("ok"):
             return 1
     elif args.command == "index":
         try:

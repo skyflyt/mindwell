@@ -58,19 +58,25 @@ Add Mindwell to my existing Obsidian vault at <path> using https://github.com/sk
 Give a coding agent this single prompt to bring an already-set-up vault current:
 
 ```text
-Update my Mindwell installation at <VAULT_PATH> to the latest tagged release from
-https://github.com/skyflyt/mindwell. Read AGENTS.md's "Updating an existing
-installation" section and follow it exactly: pull or clone the latest tag, reinstall
-the CLI, then run `mindwell upgrade` against the vault - never `mindwell init` or
-`mindwell init --force` on an existing vault. Show me the change summary before
-writing anything and wait for my approval.
+Update my Mindwell installation at <VAULT_PATH>. Read AGENTS.md's "Updating an
+existing installation" section and follow it exactly: run
+`mindwell update "<VAULT_PATH>" --dry-run`, show me the preview of both layers (CLI
+package and vault), wait for my approval, then run `mindwell update "<VAULT_PATH>"`.
+Never run `mindwell init` or `mindwell init --force` on my existing vault. Afterward
+tell me the version before and after, where the backup was saved, any file left
+alone because I customized it, and whether my registered schedules need
+re-registering. If my installed Mindwell is too old to have the `update` command,
+follow AGENTS.md's manual fallback instead.
 ```
 
-This is safe by construction: `mindwell upgrade` never overwrites `AGENTS.md` or any
-scaffold file you have customized, only adds files a newer release introduces and
-repairs files that are still byte-identical to what Mindwell last wrote, backs up
-everything it touches first, and reconciles the recorded version so `mindwell doctor`
-reports clean. See AGENTS.md for the exact command sequence and safety contract.
+This is safe by construction: `mindwell update` runs the whole chain — fetch the
+latest tag, upgrade the CLI package, reconcile the vault — and the vault step never
+overwrites `AGENTS.md` or any file you have customized, only adds files a newer
+release introduces and repairs files still byte-identical to what Mindwell last
+wrote, backs up everything it touches first, and ends with a `mindwell doctor`
+report. If you ever want something back, `mindwell backups` lists the snapshots and
+`mindwell restore` brings them back (preview first, undoable itself). See AGENTS.md
+for the exact contract.
 
 ## Expected result
 

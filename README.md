@@ -303,7 +303,10 @@ mindwell index "<VAULT_PATH>" --rebuild
 ```text
 mindwell recommend PATH [--prefer-semantic] [--basic]
 mindwell init PATH [--agent-name NAME] [--profile basic|personal-ops] [--automations none|core] [--private-workspaces]
+mindwell update PATH [--source DIR] [--dry-run]
 mindwell upgrade PATH [--agent-name NAME] [--no-backup] [--dry-run]
+mindwell backups PATH
+mindwell restore PATH [--backup STAMP] [--yes]
 mindwell index PATH [--rebuild]
 mindwell retrieve PATH QUERY [--mode quick|standard|deep] [--explain] [--no-refresh]
 mindwell automations PATH [--bundle core] [--timezone ZONE] [--force]
@@ -328,21 +331,33 @@ each vault. `mindwell doctor` warns when the package and vault versions do not m
 
 ### Updating an already-set-up vault
 
-Ask your agent: *"update my Mindwell to the latest."* The safe recipe is: pull or
-re-clone the latest tag, `pip install .` to reinstall the CLI, then
-`mindwell upgrade "<VAULT_PATH>"` — not `mindwell init` and not `mindwell init
---force`.
+Ask your agent: *"update my Mindwell to the latest."* One command does the whole
+chain — fetch the newest tagged release, upgrade the installed CLI package, then
+bring the vault current:
 
 ```bash
-mindwell upgrade "<VAULT_PATH>"
+mindwell update "<VAULT_PATH>" --dry-run   # preview both layers first
+mindwell update "<VAULT_PATH>"
 ```
 
-`upgrade` is non-destructive by construction: it never overwrites `AGENTS.md` (only
-creates it if missing), never overwrites any other scaffold file you have modified
-since Mindwell last wrote it, adds scaffold files a newer release introduced, backs up
-everything it is about to touch first, reconciles the recorded version, rebuilds the
-index, and runs `mindwell doctor`. Run `mindwell upgrade "<VAULT_PATH>" --dry-run`
-first to preview exactly what it would create/update/leave alone before writing.
+The vault step is non-destructive by construction: it never overwrites `AGENTS.md`
+(only creates it if missing), never overwrites any other scaffold file you have
+modified since Mindwell last wrote it, adds scaffold files a newer release
+introduced, backs up everything it is about to touch first, reconciles the recorded
+version, rebuilds the index, and runs `mindwell doctor`. The package step never
+downgrades, and a failed package install stops the run before the vault is touched.
+`mindwell upgrade` remains available as the vault-only step, and on a CLI too old to
+have `update` (≤ 0.4.2) the recipe is the manual two-step: reinstall from the latest
+tag, then `mindwell upgrade` — never `mindwell init`/`init --force` on an existing
+vault.
+
+If you ever want a pre-upgrade state back:
+
+```bash
+mindwell backups "<VAULT_PATH>"            # list snapshots, newest first
+mindwell restore "<VAULT_PATH>"            # preview a restore (writes nothing)
+mindwell restore "<VAULT_PATH>" --yes      # restore; snapshots current state first
+```
 `mindwell recommend` suggests `upgrade` automatically once it sees a vault whose
 recorded version is older than the installed CLI.
 
