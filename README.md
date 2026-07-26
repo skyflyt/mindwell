@@ -112,6 +112,54 @@ client. If your vault is already in a synced folder and you are the only writer,
 you are probably fine - just revisit the decision before you add a second
 machine or your first unattended task.
 
+### Multi-machine and multi-agent vaults
+
+If you use your vault from more than one computer, or let scheduled tasks write
+to it while you work, a sync client is the wrong tool for the job. It cannot
+arbitrate two writers, so it silently picks one. Git cannot arbitrate either -
+but it fails **visibly**, which is the property you actually need.
+
+The pattern:
+
+1. Keep the vault in a plain local folder and make it a git repository.
+2. Give it a remote. Anything works: a private repository on a hosted service, a
+   self-hosted Forgejo or Gitea instance, or a bare repo on a home server reached
+   over SSH.
+3. **Pull at the start of every session, push at the end.** Put that instruction
+   in the agent file your agent reads first, rather than trusting anyone to
+   remember it. An agent has no memory between sessions; a rule that is not
+   written where it looks on wake will not happen.
+
+```bash
+# session start
+git -C "$VAULT" pull --rebase --autostash
+
+# session end
+git -C "$VAULT" add -A
+git -C "$VAULT" commit -m "what this session did"
+git -C "$VAULT" push
+```
+
+`--rebase` keeps history linear so the log stays readable; `--autostash`
+protects work in progress if the tree is dirty when you pull.
+
+Three rules matter more than the commands:
+
+- **A conflict is a stop, not a merge.** Abort the rebase, leave the vault
+  exactly as it was, and tell the human. An agent auto-resolving a conflict
+  inside prose notes is worse than the conflict.
+- **Offline is a warning, not a failure.** A laptop off the network should say
+  "continuing on local state, it may be stale" and carry on, not refuse to run.
+- **Unattended runs push too.** Otherwise a scheduled task's output sits on one
+  machine until somebody happens to notice.
+
+**What this does and does not solve.** It converts a *cross-machine* collision
+from a silent overwrite into a visible merge conflict. That is a better failure
+mode, not the absence of failure. It does nothing about two agents writing the
+same file on the *same* machine at the same time - no arrangement of git fixes
+that. If you reach that point you need a single writer that owns the files, not
+a smarter sync.
+
 ## Requirements
 
 - Python 3.10 or newer

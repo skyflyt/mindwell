@@ -17,6 +17,16 @@
   editing by hand sees the duplicate appear; a scheduled task does not. The
   docs now describe that behaviour, and recommend a plain local folder plus
   backups or a git remote for anyone running unattended tasks against a vault.
+- **Added a "Multi-machine and multi-agent vaults" section to README** giving
+  the pattern that answers the question the warning above raises: keep the vault
+  in a plain local folder as a git repository, give it a remote, and pull at the
+  start of every session / push at the end - with that instruction written into
+  the agent file the agent reads on wake, because an agent has no memory between
+  sessions. Documents the three rules that matter more than the commands (a
+  conflict stops rather than auto-merges, offline warns rather than fails,
+  unattended runs push too), and is explicit that this converts a cross-machine
+  collision from a silent overwrite into a visible conflict rather than
+  eliminating it - and does nothing for two writers on the same machine.
 
 ## 0.4.3
 
