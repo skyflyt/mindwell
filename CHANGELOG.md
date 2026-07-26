@@ -1,5 +1,23 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Documented the failure mode for vaults in synced folders** (README
+  "Vaults in synced folders", plus guidance for setup agents in AGENTS.md).
+  Both documents already told users to keep the *checkout and venv* out of
+  OneDrive/Dropbox/iCloud, and noted that a live search database must never be
+  synced, but they said without qualification that the vault itself "may live
+  in a synced folder". That is fine for one person on one machine and quietly
+  dangerous for unattended runs: sync clients resolve a concurrent write by
+  renaming one side rather than merging or erroring, so a scheduled task can
+  write a note, have it land in a machine-renamed copy, leave the original
+  filename holding older content, and report success throughout. A human
+  editing by hand sees the duplicate appear; a scheduled task does not. The
+  docs now describe that behaviour, and recommend a plain local folder plus
+  backups or a git remote for anyone running unattended tasks against a vault.
+
 ## 0.4.3
 
 One command to update everything, and one command to undo it. Built for the

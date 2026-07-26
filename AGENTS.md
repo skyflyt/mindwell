@@ -17,6 +17,14 @@ Read `BOOTSTRAP.md`, `README.md`, and `SECURITY.md` before running commands. Tre
    sync client will immediately try to upload. The *vault* may live in a synced
    folder; the Mindwell checkout and venv should not.
 
+   **If the user runs scheduled or unattended tasks against the vault, advise a
+   plain local folder for the vault too.** Sync clients resolve a concurrent
+   write by renaming one side rather than merging or erroring, so an unattended
+   write can land in a machine-renamed copy while the original filename keeps the
+   older content - reporting success the whole time. A person editing by hand
+   notices the duplicate; a scheduled task does not. Durability is better served
+   by backups or a git remote. See "Vaults in synced folders" in README.md.
+
    ```bash
    git clone https://github.com/skyflyt/mindwell ~/mindwell-src
    cd ~/mindwell-src

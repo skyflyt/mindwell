@@ -89,6 +89,29 @@ mindwell init "$HOME\Documents\MySecondBrain" --profile personal-ops --private-w
 Mindwell stores its SQLite search index in the current user's cache, outside the
 vault. OneDrive, Dropbox, and iCloud should never sync a live search database.
 
+### Vaults in synced folders
+
+A vault can live in OneDrive, Dropbox, or iCloud, and for one person on one
+machine that is usually fine. Know the failure mode before you rely on it.
+
+Sync clients resolve a concurrent write by **renaming one side** rather than
+merging it or raising an error. OneDrive appends the machine name and keeps both
+copies. So when something writes a note while the sync client is uploading that
+same path, the write can land in a renamed copy while the original filename
+keeps the older content. The write reports success. Nothing raises an error.
+
+That is survivable when you are editing by hand, because you see the duplicate
+file appear. It is not survivable for unattended runs: a scheduled task can
+finish, report success, and leave none of its output under the names anything
+else reads. The risk rises sharply as soon as more than one writer exists - two
+machines, or an agent and a person working at the same time.
+
+If you run scheduled or unattended tasks against your vault, prefer a plain
+local folder and get durability from backups or a git remote instead of a sync
+client. If your vault is already in a synced folder and you are the only writer,
+you are probably fine - just revisit the decision before you add a second
+machine or your first unattended task.
+
 ## Requirements
 
 - Python 3.10 or newer
@@ -117,7 +140,8 @@ humans, not a requirement; it commonly needs additional GitHub asset hosts
 Put the checkout and its virtual environment in a plain local folder — **never inside
 OneDrive, Dropbox, or iCloud**. On many Windows machines `Documents` and `Desktop`
 are cloud-synced; a clone plus venv is thousands of small files that a sync client
-will immediately try to upload. Your vault may live in a synced folder; the Mindwell
+will immediately try to upload. Your vault may live in a synced folder, with the
+caveats in [Vaults in synced folders](#vaults-in-synced-folders); the Mindwell
 checkout and venv should not (`%LOCALAPPDATA%\mindwell-src` or `~/mindwell-src` are
 good homes).
 
