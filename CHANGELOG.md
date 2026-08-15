@@ -27,6 +27,17 @@
   unattended runs push too), and is explicit that this converts a cross-machine
   collision from a silent overwrite into a visible conflict rather than
   eliminating it - and does nothing for two writers on the same machine.
+- **Added an "If a timer runs the sync" section to README** with the four
+  guards a scheduled sync task needs: a hold file sessions touch during long
+  edits, a quiescence check that skips the cycle when files changed in the
+  last two minutes, push-first-reconcile-on-rejection so the rebase runs only
+  when the remote demands it, and a counter on consecutive offline warnings so
+  a dead remote stops passing as a laptop off the network. Each guard maps to
+  an observed failure from three weeks of running the pattern in production,
+  including a day where a bare 15-minute timer collided with a working agent
+  five times and an interrupted `pull --rebase --autostash` cost that agent
+  its run. Also records the structural rule that code projects inside a vault
+  keep their own git repository.
 
 ## 0.4.3
 
