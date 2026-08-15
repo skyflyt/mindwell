@@ -3,6 +3,8 @@ from __future__ import annotations
 import re
 from pathlib import Path
 
+from .fsio import atomic_write_text
+
 HEADER = re.compile(r"^> \[!(contradiction|gap)\](?:\s+(.+))?$", re.I)
 FIELD = re.compile(r"^>\s*(claim|sources|status|owner|review):\s*(.*)$", re.I)
 
@@ -38,5 +40,5 @@ def compile_registry(vault: Path) -> Path:
                   f"- Owner: {item['owner'] or '_unassigned_'}",
                   f"- Review: {item['review'] or '_unscheduled_'}", ""]
     output = vault / "wiki" / "contradictions.md"
-    output.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    atomic_write_text(output, "\n".join(lines) + "\n")
     return output

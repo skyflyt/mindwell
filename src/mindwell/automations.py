@@ -4,6 +4,8 @@ import hashlib
 import json
 from pathlib import Path
 
+from .fsio import atomic_write_text
+
 
 CORE_TASKS = [
     {
@@ -216,7 +218,7 @@ def write_automation_plan(vault: Path, bundle: str = "core",
         path = vault / task["prompt_file"]
         path.parent.mkdir(parents=True, exist_ok=True)
         if force or not path.exists():
-            path.write_text(PROMPTS[task["id"]], encoding="utf-8")
+            atomic_write_text(path, PROMPTS[task["id"]])
             record(task["prompt_file"], PROMPTS[task["id"]])
             created.append(path)
     plan = {
@@ -232,11 +234,11 @@ def write_automation_plan(vault: Path, bundle: str = "core",
     }
     plan_path = root / "plan.json"
     if force or not plan_path.exists():
-        plan_path.write_text(json.dumps(plan, indent=2) + "\n", encoding="utf-8")
+        atomic_write_text(plan_path, json.dumps(plan, indent=2) + "\n")
         created.append(plan_path)
     register = root / "REGISTER-WITH-YOUR-AGENT.md"
     if force or not register.exists():
-        register.write_text(REGISTER_GUIDE, encoding="utf-8")
+        atomic_write_text(register, REGISTER_GUIDE)
         record("automations/REGISTER-WITH-YOUR-AGENT.md", REGISTER_GUIDE)
         created.append(register)
     return created

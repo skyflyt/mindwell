@@ -16,6 +16,7 @@ from mindwell import scaffold
 from mindwell.scaffold import init_vault, upgrade_vault
 from mindwell.uncertainty import scan
 from mindwell.advisor import recommend
+from mindwell.fsio import atomic_write_text
 from mindwell import __version__
 
 
@@ -737,6 +738,59 @@ class FrameworkTests(unittest.TestCase):
             lease = ca.begin("state.md"); ca.verify(lease)
             (a / "state.md").write_text("v2"); ca.commit(lease)
             with self.assertRaises(CoordinationError): cb.begin("state.md")
+
+
+class AtomicWriteTests(unittest.TestCase):
+    """fsio.atomic_write_text: a failed write must never leave a truncated file.
+
+    Path.write_text truncates before it writes, so a payload that fails to
+    encode destroys the existing content. These tests pin the two properties
+    that matter: content lands intact on success, and the original survives
+    byte-for-byte on failure.
+    """
+
+    def test_writes_content(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "note.md"
+            atomic_write_text(target, "hello\n")
+            self.assertEqual(target.read_text(encoding="utf-8"), "hello\n")
+            atomic_write_text(target, "replaced\n")
+            self.assertEqual(target.read_text(encoding="utf-8"), "replaced\n")
+
+    def test_bad_payload_preserves_original(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "note.md"
+            target.write_text("precious", encoding="utf-8")
+            # A lone surrogate cannot encode to UTF-8. Path.write_text would
+            # truncate first and raise after, leaving a zero-byte file - the
+            # exact incident this module exists to prevent.
+            with self.assertRaises(UnicodeEncodeError):
+                atomic_write_text(target, "\ud800")
+            self.assertEqual(target.read_text(encoding="utf-8"), "precious")
+
+    def test_no_temp_file_left_behind(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            target = Path(tmp) / "note.md"
+            target.write_text("precious", encoding="utf-8")
+            with self.assertRaises(UnicodeEncodeError):
+                atomic_write_text(target, "\ud800")
+            atomic_write_text(target, "clean\n")
+            leftovers = [p.name for p in Path(tmp).iterdir()
+                         if p.name != "note.md"]
+            self.assertEqual(leftovers, [])
+
+    def test_source_tree_has_no_bare_write_text(self):
+        """No module writes user-visible files with truncate-then-write."""
+        src = Path(__file__).resolve().parent.parent / "src" / "mindwell"
+        offenders = []
+        for module in src.glob("*.py"):
+            if module.name == "fsio.py":
+                continue
+            for number, line in enumerate(
+                    module.read_text(encoding="utf-8").splitlines(), 1):
+                if ".write_text(" in line:
+                    offenders.append(f"{module.name}:{number}")
+        self.assertEqual(offenders, [])
 
 
 if __name__ == "__main__": unittest.main()
