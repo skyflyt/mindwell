@@ -141,7 +141,9 @@ git -C "$VAULT" push
 ```
 
 `--rebase` keeps history linear so the log stays readable; `--autostash`
-protects work in progress if the tree is dirty when you pull.
+protects work in progress if the tree is dirty when you pull. Both are safe
+when a person or a session runs them; read the timer section below before an
+unattended task gets them.
 
 Three rules matter more than the commands:
 
@@ -153,12 +155,48 @@ Three rules matter more than the commands:
 - **Unattended runs push too.** Otherwise a scheduled task's output sits on one
   machine until somebody happens to notice.
 
+### If a timer runs the sync
+
+Session-scoped pulls and pushes stay safe because nothing else has the vault
+mid-write when they run. The failure surface changes the day you hand the sync
+to a scheduled task on a short timer. One measured day produced five
+collisions between a sync timer and a working agent: the timer committed
+half-written trees, and one pull that fired mid-edit left the repository in an
+unfinished rebase and checked the working tree out from under the agent, which
+lost its whole run. `pull --rebase --autostash` is the one command here that
+can leave the repo unusable when interrupted, so a timer has to earn the right
+to run it.
+
+Four guards close this off. Each exists because the bare timer failed without
+it:
+
+- **A hold file.** A session touches an agreed marker (say
+  `.vault-sync-hold`) before long multi-file edits and deletes it at close.
+  The timer stands down while the marker exists and ignores it past a fixed
+  age, so a crashed session cannot wedge the timer.
+- **A quiescence check.** If any changed file was written in the last two
+  minutes, the timer skips that cycle. This is the backstop for the session
+  that forgot the hold file.
+- **Push first, reconcile on rejection.** The timer pushes, and pulls only
+  when the remote rejects the push. The rebase then runs when the history
+  demands it instead of every cycle.
+- **Count consecutive offline warnings.** "Offline is a warning" is right for
+  a laptop off the network and wrong for a remote that died on Tuesday. A
+  remote that only ever warns is a silent failure with better manners; after
+  about four consecutive warnings, raise something a human will see.
+
+One structural rule rides along: **a code project inside the vault gets its
+own git repository, and the vault ignores its path.** A notes timer that
+commits whatever it finds will sooner or later commit a half-written source
+tree. That is how one interrupted rebase cost an agent its run.
+
 **What this does and does not solve.** It converts a *cross-machine* collision
 from a silent overwrite into a visible merge conflict. That is a better failure
 mode, not the absence of failure. It does nothing about two agents writing the
 same file on the *same* machine at the same time - no arrangement of git fixes
 that. If you reach that point you need a single writer that owns the files, not
-a smarter sync.
+a smarter sync; [docs/multi-writer.md](docs/multi-writer.md) covers that
+layer.
 
 ## Requirements
 
