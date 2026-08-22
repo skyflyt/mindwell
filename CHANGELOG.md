@@ -38,6 +38,23 @@
   five times and an interrupted `pull --rebase --autostash` cost that agent
   its run. Also records the structural rule that code projects inside a vault
   keep their own git repository.
+- **Added a "Two sessions, one machine, one repository" section to README**,
+  from the second round of production incidents with the pattern above.
+  `git add -A` at session end swept a concurrent session's half-written files
+  into the closing session's commit (fix: commit named paths with
+  `git commit -- <paths>`; in scripts, make an unscoped commit an error);
+  `--autostash` before a routine push checked a working tree out from under
+  the other writer (fix: push first, reconcile only on rejection, with
+  `--no-autostash` - unpushed is recoverable, a clobbered working tree is
+  not); and two sessions merely *pulling* concurrently hard-failed, because
+  `FETCH_HEAD` is not written atomically (measured: 40/40 corrupted
+  `FETCH_HEAD`s under six concurrent fetches; 24/24 failed concurrent pulls).
+  The fix is layered so the structural part carries it alone: rebase onto the
+  remote-tracking ref rather than `FETCH_HEAD`, serialise with a
+  machine-local lock (never a lock inside the synced repository), and retry
+  only a named list of transient errors, never a merge conflict. The session
+  commands in "Multi-machine and multi-agent vaults" now demonstrate the safe
+  shape.
 
 ## 0.4.3
 

@@ -132,18 +132,24 @@ The pattern:
 
 ```bash
 # session start
-git -C "$VAULT" pull --rebase --autostash
+git -C "$VAULT" fetch origin
+git -C "$VAULT" rebase origin/main
 
-# session end
-git -C "$VAULT" add -A
+# session end - commit only the paths this session wrote
+git -C "$VAULT" add daily/2026-01-15.md wiki/topic-this-session-edited.md
 git -C "$VAULT" commit -m "what this session did"
 git -C "$VAULT" push
 ```
 
-`--rebase` keeps history linear so the log stays readable; `--autostash`
-protects work in progress if the tree is dirty when you pull. Both are safe
-when a person or a session runs them; read the timer section below before an
-unattended task gets them.
+Two details in those commands are load-bearing, and both were learned the
+expensive way - the "Two sessions, one machine" section below explains them.
+The pull is a fetch plus a rebase onto the remote-tracking ref, rather than a
+`git pull` that rebases onto `FETCH_HEAD`. And the commit stages named paths
+rather than `add -A`, so it can only ever contain work this session authored.
+If exactly one session or person touches the vault at a time, `git pull
+--rebase --autostash` and `git add -A` behave fine; the moment a second
+concurrent writer exists they stop being safe, and you rarely get to schedule
+that moment.
 
 Three rules matter more than the commands:
 
@@ -154,6 +160,59 @@ Three rules matter more than the commands:
   "continuing on local state, it may be stale" and carry on, not refuse to run.
 - **Unattended runs push too.** Otherwise a scheduled task's output sits on one
   machine until somebody happens to notice.
+
+### Two sessions, one machine, one repository
+
+Concurrent sessions on the same machine share one index and one working tree,
+and two convenient git habits turn that from crowded into destructive:
+
+- **`git add -A` commits work you did not author.** On one measured evening,
+  the first of two concurrent sessions to close swept the other session's
+  half-finished files into its own commit, under its own message. Nothing was
+  lost - but the history now claims authorship that never happened, and it
+  recurs on every overlap. Commit named paths (`git commit -- <paths>` ignores
+  the rest of the index, so a neighbour's staged work stays staged). If a
+  script does the committing, make an unscoped commit an **error** - not a
+  default, and not a warning, because a warning leaves every existing call
+  site quietly wrong.
+- **`--autostash` checks the working tree out from under the other writer.**
+  Stashing a concurrent session's in-progress files to make your own rebase
+  convenient trades their working tree for your push. Push first and reconcile
+  only if the remote rejects the push - with `--no-autostash`, and if a
+  neighbour's dirty tree blocks the rebase, decline, keep your commit in local
+  history, and let the next push carry it. **Unpushed is recoverable; a
+  clobbered working tree is not.**
+
+A third failure needs no writes at all: two sessions merely *pulling* at the
+same time. `git pull` rebases onto whatever `FETCH_HEAD` names, and
+`FETCH_HEAD` is not written atomically - concurrent fetches in one repository
+leave multiple for-merge lines in it, and the pull then refuses with `fatal:
+Cannot rebase onto multiple branches`. Measured in a throwaway repo: six
+concurrent fetches corrupted `FETCH_HEAD` for this purpose in 40 of 40 rounds,
+and four concurrent pulls hard-failed 24 of 24 times. Overlap makes this the
+normal outcome, not a rare race - and if your agent treats a failed
+session-opening pull as "stop and alert the human", a pure timing accident
+halts an unattended run.
+
+Three layers close it, and the order matters:
+
+1. **Structural.** Fetch and rebase as separate commands, rebasing onto the
+   remote-tracking ref (`origin/main`) - a single ref updated under git's own
+   lock, which cannot name "multiple branches" no matter who else is
+   fetching. This layer must hold even when the other two are unavailable.
+2. **Serialisation.** A machine-local lock around sync operations. Keep it
+   machine-local: a lock file *inside* the synced repository is a lock
+   carried by an eventually-consistent transport, which is no lock at all.
+   If the lock cannot be acquired promptly, proceed unserialised and say so -
+   blocking a session start behind another session's sync is worse than the
+   race that layer 1 already survives.
+3. **Bounded retry, from a named list.** Retry at most a few times, only for
+   errors you have specifically identified as transient (the multi-branch
+   `FETCH_HEAD` shape, a held ref lock), only from a state verified free of a
+   half-finished rebase, and log why each retry qualified. Never retry a
+   merge conflict. A blanket retry converts a real fault into an intermittent
+   one, which is strictly worse - and a "transient" error that survives three
+   attempts is a fault wearing a transient's face.
 
 ### If a timer runs the sync
 
