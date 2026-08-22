@@ -76,7 +76,12 @@
   because checkouts and rebases rewrite timestamps wholesale; a liveness check
   must measure the monitored process's own artifact, not a proxy such as "the
   most recent commit by any author", which stayed green through a two-day
-  backup outage).
+  backup outage; and an alert is an effect too - a monitor whose delivery leg
+  failed authentication for nine days read green every cycle because the
+  verdict was in the run receipt and the delivery was not, and the failure
+  records lived in state the next success erased - so receipts record verdict
+  and delivery, and failure records live in durable version-tracked state,
+  resolved rather than deleted; see `docs/detectors.md`).
 
 ### Added
 
