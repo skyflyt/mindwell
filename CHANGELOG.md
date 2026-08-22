@@ -56,6 +56,36 @@
   commands in "Multi-machine and multi-agent vaults" now demonstrate the safe
   shape.
 
+### Added
+
+- **`docs/detectors.md` — "Detectors and receipts."** The failure class that
+  dominated a month of production automation work, written up as doctrine: a
+  detector that measures a proxy for the thing, rather than the thing itself,
+  is indistinguishable from a working detector until the day it matters. The
+  proxy catalogue (exit codes vs. side effects, repository activity vs. "the
+  backup ran", mtimes vs. freshness, format-keyed staleness checks, name
+  prefixes vs. rosters, a tool's own "verify", credential-gated coverage,
+  structurally-incapable counting methods), the run-receipt pattern (verdict
+  *and* delivery, tracked in version control, heartbeat at the end of the
+  work), self-observation ("a check that measures itself is not a check" —
+  receipts judged by a separate watchdog on a separate trigger and delivery
+  path), durable alerting state (resolve, never delete; key findings
+  individually; match alert cadence to decision cadence), alerts that assert
+  only what they can observe, the four legs of a non-vacuous green, and
+  proving alarms against a copy of the world.
+- **`docs/grounded-claims.md` — "Grounded claims."** Conventions that keep an
+  agent from presenting its record as reality, each from a real anonymized
+  incident: superlatives are artifacts of when the record began ("the record
+  contains no instance of" is the honest sentence); how a scoped claim loses
+  its qualifier across rewrite hops and gets promoted into standing memory;
+  mixed-source answers; correction propagation (in place, struck-not-deleted,
+  receipts exempt, retracted false alarms kept visible); the NOT-CURRENT
+  banner convention for snapshots ("the live system is the record; nothing in
+  the vault is"); writing rules for the misreader (ceiling-not-floor, inline
+  misreading notes, one-question acceptance tests, saying what is *not* a
+  finding); and verifying summaries against sources you still hold, with a
+  deterministic dropped-negation guard.
+
 ## 0.4.3
 
 One command to update everything, and one command to undo it. Built for the

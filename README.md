@@ -546,6 +546,8 @@ Maintainers can use the [release checklist](docs/releasing.md).
 - [Fresh-agent setup](BOOTSTRAP.md)
 - [Architecture](docs/architecture.md)
 - [Existing-vault migration](docs/migration.md)
+- [Detectors and receipts](docs/detectors.md) — how automation health checks fail, and the receipt pattern that fixes them
+- [Grounded claims](docs/grounded-claims.md) — keeping the record honest about what it can and cannot assert
 - [Security](SECURITY.md)
 - [Contributing](CONTRIBUTING.md)
 - [Changelog](CHANGELOG.md)
