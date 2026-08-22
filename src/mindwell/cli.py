@@ -8,6 +8,7 @@ from .benchmark import run as run_benchmark
 from .engine import build, retrieve, OllamaUnavailable
 from .doctor import inspect
 from .config import load_config
+from .fsio import atomic_write_text
 from .guidance import ollama_unreachable_guidance
 from .scaffold import init_vault, list_backups, restore_backup, upgrade_vault
 from .updater import update as run_update
@@ -103,13 +104,13 @@ def main() -> int:
         path = args.vault / "config" / "mindwell.json"
         config = load_config(args.vault); config["retrieval_provider"] = args.provider
         path.parent.mkdir(parents=True, exist_ok=True)
-        path.write_text(json.dumps(config, indent=2) + "\n", encoding="utf-8")
+        atomic_write_text(path, json.dumps(config, indent=2) + "\n")
         installation_path = args.vault / "config" / "installation.json"
         if installation_path.exists():
             installation = json.loads(installation_path.read_text(encoding="utf-8"))
             installation["provider"] = args.provider
-            installation_path.write_text(json.dumps(installation, indent=2) + "\n",
-                                         encoding="utf-8")
+            atomic_write_text(installation_path,
+                              json.dumps(installation, indent=2) + "\n")
         print(json.dumps({"provider": args.provider, "config": str(path)}, indent=2))
     return 0
 

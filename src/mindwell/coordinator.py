@@ -9,6 +9,8 @@ import uuid
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
+from .fsio import atomic_write_text
+
 
 class CoordinationError(RuntimeError):
     pass
@@ -60,7 +62,7 @@ class Coordinator:
         try: self.create(shared, asdict(lease))
         except FileExistsError as exc:
             local.unlink(missing_ok=True); raise CoordinationError("shared writer active") from exc
-        if not committed: baseline.write_text(json.dumps({"hash": current}), encoding="utf-8")
+        if not committed: atomic_write_text(baseline, json.dumps({"hash": current}))
         return lease
 
     def verify(self, lease: Lease):
@@ -74,7 +76,7 @@ class Coordinator:
     def commit(self, lease: Lease):
         local, shared, baseline = self.paths(lease.target)
         if self.read(shared).get("token") != lease.token: raise CoordinationError("lease token mismatch")
-        baseline.write_text(json.dumps({"hash": digest(self.vault / lease.target)}), encoding="utf-8")
+        atomic_write_text(baseline, json.dumps({"hash": digest(self.vault / lease.target)}))
         shared.unlink(missing_ok=True); local.unlink(missing_ok=True)
 
     def abort(self, lease: Lease):

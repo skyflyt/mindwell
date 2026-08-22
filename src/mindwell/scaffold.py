@@ -9,6 +9,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import DEFAULT_CONFIG, backup_root
+from .fsio import atomic_write_text
 from .automations import (LEGACY_TEMPLATE_HASHES, automation_template_files,
                           write_automation_plan)
 
@@ -242,7 +243,7 @@ def _reconcile_file(vault: Path, relative: str, body: str, scaffold_hashes: dict
     if not path.exists():
         if not dry_run:
             path.parent.mkdir(parents=True, exist_ok=True)
-            path.write_text(body, encoding="utf-8")
+            atomic_write_text(path, body)
             scaffold_hashes[relative] = new_hash
         return "created", path
     if relative in CANONICAL_FILES:
@@ -260,7 +261,7 @@ def _reconcile_file(vault: Path, relative: str, body: str, scaffold_hashes: dict
                         or (legacy_hashes is not None and current_hash in legacy_hashes))
     if allow_repair and known_unmodified:
         if not dry_run:
-            path.write_text(body, encoding="utf-8")
+            atomic_write_text(path, body)
             scaffold_hashes[relative] = new_hash
         return "updated", path
     return "preserved_customized", path
@@ -323,7 +324,7 @@ def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
     config_path = vault / "config" / "mindwell.json"
     config_path.parent.mkdir(parents=True, exist_ok=True)
     if force or not config_path.exists():
-        config_path.write_text(json.dumps(DEFAULT_CONFIG, indent=2) + "\n", encoding="utf-8")
+        atomic_write_text(config_path, json.dumps(DEFAULT_CONFIG, indent=2) + "\n")
         created.append(config_path)
 
     # Written before installation.json so the automation templates' hashes
@@ -354,13 +355,13 @@ def init_vault(vault: Path, force: bool = False, agent_name: str | None = None,
                            "script) from that environment's own install venv",
             "scaffold_hashes": scaffold_hashes,
         }
-        install_path.write_text(json.dumps(installation, indent=2) + "\n",
-                                encoding="utf-8")
+        atomic_write_text(install_path,
+                          json.dumps(installation, indent=2) + "\n")
         created.append(install_path)
     elif scaffold_hashes != existing_installation.get("scaffold_hashes", {}):
         existing_installation["scaffold_hashes"] = scaffold_hashes
-        install_path.write_text(json.dumps(existing_installation, indent=2) + "\n",
-                                encoding="utf-8")
+        atomic_write_text(install_path,
+                          json.dumps(existing_installation, indent=2) + "\n")
         updated.append(install_path)
 
     created.extend(automation_files)
@@ -441,7 +442,7 @@ def upgrade_vault(vault: Path, agent_name: str | None = None,
         installation["mindwell_version"] = __version__
         installation["scaffold_hashes"] = scaffold_hashes
         installation["last_upgraded_at"] = datetime.now(dt_timezone.utc).isoformat()
-        install_path.write_text(json.dumps(installation, indent=2) + "\n", encoding="utf-8")
+        atomic_write_text(install_path, json.dumps(installation, indent=2) + "\n")
 
     index_result = None
     doctor_result = None

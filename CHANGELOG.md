@@ -2,6 +2,19 @@
 
 ## Unreleased
 
+### Fixed
+
+- **Every file Mindwell writes now lands atomically** (new
+  `mindwell.fsio.atomic_write_text`, used by scaffold, upgrade, automations,
+  configure, the contradictions registry, and the coordinator's baselines).
+  `Path.write_text` truncates the target before writing, so a payload that
+  fails to encode, a full disk, or a killed process left the file at zero
+  bytes with the old content unrecoverable. The helper encodes first, writes
+  to a sibling temporary file, and `os.replace`s it over the target, so a
+  reader sees the old content or the new content and never an empty file. A
+  regression test also fails the build if a bare `.write_text(` call returns
+  to `src/mindwell`.
+
 ### Changed
 
 - **Documented the failure mode for vaults in synced folders** (README
@@ -55,6 +68,20 @@
   only a named list of transient errors, never a merge conflict. The session
   commands in "Multi-machine and multi-agent vaults" now demonstrate the safe
   shape.
+
+- **`docs/multi-writer.md` gained two sections from production incidents:**
+  "Write so failure cannot destroy" (the truncate-then-write hazard above, and
+  the shape vault automations should copy) and "Verify effects, not actors"
+  (re-read what you changed; mtime is not freshness in a git-synced vault
+  because checkouts and rebases rewrite timestamps wholesale; a liveness check
+  must measure the monitored process's own artifact, not a proxy such as "the
+  most recent commit by any author", which stayed green through a two-day
+  backup outage; and an alert is an effect too - a monitor whose delivery leg
+  failed authentication for nine days read green every cycle because the
+  verdict was in the run receipt and the delivery was not, and the failure
+  records lived in state the next success erased - so receipts record verdict
+  and delivery, and failure records live in durable version-tracked state,
+  resolved rather than deleted; see `docs/detectors.md`).
 
 ### Added
 
