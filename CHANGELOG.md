@@ -1,5 +1,61 @@
 # Changelog
 
+## Unreleased
+
+### Changed
+
+- **Documented the failure mode for vaults in synced folders** (README
+  "Vaults in synced folders", plus guidance for setup agents in AGENTS.md).
+  Both documents already told users to keep the *checkout and venv* out of
+  OneDrive/Dropbox/iCloud, and noted that a live search database must never be
+  synced, but they said without qualification that the vault itself "may live
+  in a synced folder". That is fine for one person on one machine and quietly
+  dangerous for unattended runs: sync clients resolve a concurrent write by
+  renaming one side rather than merging or erroring, so a scheduled task can
+  write a note, have it land in a machine-renamed copy, leave the original
+  filename holding older content, and report success throughout. A human
+  editing by hand sees the duplicate appear; a scheduled task does not. The
+  docs now describe that behaviour, and recommend a plain local folder plus
+  backups or a git remote for anyone running unattended tasks against a vault.
+- **Added a "Multi-machine and multi-agent vaults" section to README** giving
+  the pattern that answers the question the warning above raises: keep the vault
+  in a plain local folder as a git repository, give it a remote, and pull at the
+  start of every session / push at the end - with that instruction written into
+  the agent file the agent reads on wake, because an agent has no memory between
+  sessions. Documents the three rules that matter more than the commands (a
+  conflict stops rather than auto-merges, offline warns rather than fails,
+  unattended runs push too), and is explicit that this converts a cross-machine
+  collision from a silent overwrite into a visible conflict rather than
+  eliminating it - and does nothing for two writers on the same machine.
+- **Added an "If a timer runs the sync" section to README** with the four
+  guards a scheduled sync task needs: a hold file sessions touch during long
+  edits, a quiescence check that skips the cycle when files changed in the
+  last two minutes, push-first-reconcile-on-rejection so the rebase runs only
+  when the remote demands it, and a counter on consecutive offline warnings so
+  a dead remote stops passing as a laptop off the network. Each guard maps to
+  an observed failure from three weeks of running the pattern in production,
+  including a day where a bare 15-minute timer collided with a working agent
+  five times and an interrupted `pull --rebase --autostash` cost that agent
+  its run. Also records the structural rule that code projects inside a vault
+  keep their own git repository.
+- **Added a "Two sessions, one machine, one repository" section to README**,
+  from the second round of production incidents with the pattern above.
+  `git add -A` at session end swept a concurrent session's half-written files
+  into the closing session's commit (fix: commit named paths with
+  `git commit -- <paths>`; in scripts, make an unscoped commit an error);
+  `--autostash` before a routine push checked a working tree out from under
+  the other writer (fix: push first, reconcile only on rejection, with
+  `--no-autostash` - unpushed is recoverable, a clobbered working tree is
+  not); and two sessions merely *pulling* concurrently hard-failed, because
+  `FETCH_HEAD` is not written atomically (measured: 40/40 corrupted
+  `FETCH_HEAD`s under six concurrent fetches; 24/24 failed concurrent pulls).
+  The fix is layered so the structural part carries it alone: rebase onto the
+  remote-tracking ref rather than `FETCH_HEAD`, serialise with a
+  machine-local lock (never a lock inside the synced repository), and retry
+  only a named list of transient errors, never a merge conflict. The session
+  commands in "Multi-machine and multi-agent vaults" now demonstrate the safe
+  shape.
+
 ## 0.4.3
 
 One command to update everything, and one command to undo it. Built for the

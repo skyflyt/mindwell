@@ -89,6 +89,174 @@ mindwell init "$HOME\Documents\MySecondBrain" --profile personal-ops --private-w
 Mindwell stores its SQLite search index in the current user's cache, outside the
 vault. OneDrive, Dropbox, and iCloud should never sync a live search database.
 
+### Vaults in synced folders
+
+A vault can live in OneDrive, Dropbox, or iCloud, and for one person on one
+machine that is usually fine. Know the failure mode before you rely on it.
+
+Sync clients resolve a concurrent write by **renaming one side** rather than
+merging it or raising an error. OneDrive appends the machine name and keeps both
+copies. So when something writes a note while the sync client is uploading that
+same path, the write can land in a renamed copy while the original filename
+keeps the older content. The write reports success. Nothing raises an error.
+
+That is survivable when you are editing by hand, because you see the duplicate
+file appear. It is not survivable for unattended runs: a scheduled task can
+finish, report success, and leave none of its output under the names anything
+else reads. The risk rises sharply as soon as more than one writer exists - two
+machines, or an agent and a person working at the same time.
+
+If you run scheduled or unattended tasks against your vault, prefer a plain
+local folder and get durability from backups or a git remote instead of a sync
+client. If your vault is already in a synced folder and you are the only writer,
+you are probably fine - just revisit the decision before you add a second
+machine or your first unattended task.
+
+### Multi-machine and multi-agent vaults
+
+If you use your vault from more than one computer, or let scheduled tasks write
+to it while you work, a sync client is the wrong tool for the job. It cannot
+arbitrate two writers, so it silently picks one. Git cannot arbitrate either -
+but it fails **visibly**, which is the property you actually need.
+
+The pattern:
+
+1. Keep the vault in a plain local folder and make it a git repository.
+2. Give it a remote. Anything works: a private repository on a hosted service, a
+   self-hosted Forgejo or Gitea instance, or a bare repo on a home server reached
+   over SSH.
+3. **Pull at the start of every session, push at the end.** Put that instruction
+   in the agent file your agent reads first, rather than trusting anyone to
+   remember it. An agent has no memory between sessions; a rule that is not
+   written where it looks on wake will not happen.
+
+```bash
+# session start
+git -C "$VAULT" fetch origin
+git -C "$VAULT" rebase origin/main
+
+# session end - commit only the paths this session wrote
+git -C "$VAULT" add daily/2026-01-15.md wiki/topic-this-session-edited.md
+git -C "$VAULT" commit -m "what this session did"
+git -C "$VAULT" push
+```
+
+Two details in those commands are load-bearing, and both were learned the
+expensive way - the "Two sessions, one machine" section below explains them.
+The pull is a fetch plus a rebase onto the remote-tracking ref, rather than a
+`git pull` that rebases onto `FETCH_HEAD`. And the commit stages named paths
+rather than `add -A`, so it can only ever contain work this session authored.
+If exactly one session or person touches the vault at a time, `git pull
+--rebase --autostash` and `git add -A` behave fine; the moment a second
+concurrent writer exists they stop being safe, and you rarely get to schedule
+that moment.
+
+Three rules matter more than the commands:
+
+- **A conflict is a stop, not a merge.** Abort the rebase, leave the vault
+  exactly as it was, and tell the human. An agent auto-resolving a conflict
+  inside prose notes is worse than the conflict.
+- **Offline is a warning, not a failure.** A laptop off the network should say
+  "continuing on local state, it may be stale" and carry on, not refuse to run.
+- **Unattended runs push too.** Otherwise a scheduled task's output sits on one
+  machine until somebody happens to notice.
+
+### Two sessions, one machine, one repository
+
+Concurrent sessions on the same machine share one index and one working tree,
+and two convenient git habits turn that from crowded into destructive:
+
+- **`git add -A` commits work you did not author.** On one measured evening,
+  the first of two concurrent sessions to close swept the other session's
+  half-finished files into its own commit, under its own message. Nothing was
+  lost - but the history now claims authorship that never happened, and it
+  recurs on every overlap. Commit named paths (`git commit -- <paths>` ignores
+  the rest of the index, so a neighbour's staged work stays staged). If a
+  script does the committing, make an unscoped commit an **error** - not a
+  default, and not a warning, because a warning leaves every existing call
+  site quietly wrong.
+- **`--autostash` checks the working tree out from under the other writer.**
+  Stashing a concurrent session's in-progress files to make your own rebase
+  convenient trades their working tree for your push. Push first and reconcile
+  only if the remote rejects the push - with `--no-autostash`, and if a
+  neighbour's dirty tree blocks the rebase, decline, keep your commit in local
+  history, and let the next push carry it. **Unpushed is recoverable; a
+  clobbered working tree is not.**
+
+A third failure needs no writes at all: two sessions merely *pulling* at the
+same time. `git pull` rebases onto whatever `FETCH_HEAD` names, and
+`FETCH_HEAD` is not written atomically - concurrent fetches in one repository
+leave multiple for-merge lines in it, and the pull then refuses with `fatal:
+Cannot rebase onto multiple branches`. Measured in a throwaway repo: six
+concurrent fetches corrupted `FETCH_HEAD` for this purpose in 40 of 40 rounds,
+and four concurrent pulls hard-failed 24 of 24 times. Overlap makes this the
+normal outcome, not a rare race - and if your agent treats a failed
+session-opening pull as "stop and alert the human", a pure timing accident
+halts an unattended run.
+
+Three layers close it, and the order matters:
+
+1. **Structural.** Fetch and rebase as separate commands, rebasing onto the
+   remote-tracking ref (`origin/main`) - a single ref updated under git's own
+   lock, which cannot name "multiple branches" no matter who else is
+   fetching. This layer must hold even when the other two are unavailable.
+2. **Serialisation.** A machine-local lock around sync operations. Keep it
+   machine-local: a lock file *inside* the synced repository is a lock
+   carried by an eventually-consistent transport, which is no lock at all.
+   If the lock cannot be acquired promptly, proceed unserialised and say so -
+   blocking a session start behind another session's sync is worse than the
+   race that layer 1 already survives.
+3. **Bounded retry, from a named list.** Retry at most a few times, only for
+   errors you have specifically identified as transient (the multi-branch
+   `FETCH_HEAD` shape, a held ref lock), only from a state verified free of a
+   half-finished rebase, and log why each retry qualified. Never retry a
+   merge conflict. A blanket retry converts a real fault into an intermittent
+   one, which is strictly worse - and a "transient" error that survives three
+   attempts is a fault wearing a transient's face.
+
+### If a timer runs the sync
+
+Session-scoped pulls and pushes stay safe because nothing else has the vault
+mid-write when they run. The failure surface changes the day you hand the sync
+to a scheduled task on a short timer. One measured day produced five
+collisions between a sync timer and a working agent: the timer committed
+half-written trees, and one pull that fired mid-edit left the repository in an
+unfinished rebase and checked the working tree out from under the agent, which
+lost its whole run. `pull --rebase --autostash` is the one command here that
+can leave the repo unusable when interrupted, so a timer has to earn the right
+to run it.
+
+Four guards close this off. Each exists because the bare timer failed without
+it:
+
+- **A hold file.** A session touches an agreed marker (say
+  `.vault-sync-hold`) before long multi-file edits and deletes it at close.
+  The timer stands down while the marker exists and ignores it past a fixed
+  age, so a crashed session cannot wedge the timer.
+- **A quiescence check.** If any changed file was written in the last two
+  minutes, the timer skips that cycle. This is the backstop for the session
+  that forgot the hold file.
+- **Push first, reconcile on rejection.** The timer pushes, and pulls only
+  when the remote rejects the push. The rebase then runs when the history
+  demands it instead of every cycle.
+- **Count consecutive offline warnings.** "Offline is a warning" is right for
+  a laptop off the network and wrong for a remote that died on Tuesday. A
+  remote that only ever warns is a silent failure with better manners; after
+  about four consecutive warnings, raise something a human will see.
+
+One structural rule rides along: **a code project inside the vault gets its
+own git repository, and the vault ignores its path.** A notes timer that
+commits whatever it finds will sooner or later commit a half-written source
+tree. That is how one interrupted rebase cost an agent its run.
+
+**What this does and does not solve.** It converts a *cross-machine* collision
+from a silent overwrite into a visible merge conflict. That is a better failure
+mode, not the absence of failure. It does nothing about two agents writing the
+same file on the *same* machine at the same time - no arrangement of git fixes
+that. If you reach that point you need a single writer that owns the files, not
+a smarter sync; [docs/multi-writer.md](docs/multi-writer.md) covers that
+layer.
+
 ## Requirements
 
 - Python 3.10 or newer
@@ -117,7 +285,8 @@ humans, not a requirement; it commonly needs additional GitHub asset hosts
 Put the checkout and its virtual environment in a plain local folder — **never inside
 OneDrive, Dropbox, or iCloud**. On many Windows machines `Documents` and `Desktop`
 are cloud-synced; a clone plus venv is thousands of small files that a sync client
-will immediately try to upload. Your vault may live in a synced folder; the Mindwell
+will immediately try to upload. Your vault may live in a synced folder, with the
+caveats in [Vaults in synced folders](#vaults-in-synced-folders); the Mindwell
 checkout and venv should not (`%LOCALAPPDATA%\mindwell-src` or `~/mindwell-src` are
 good homes).
 
