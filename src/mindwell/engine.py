@@ -284,8 +284,16 @@ def assemble_context(selected: list[tuple], query: str, budget_chars: int) -> tu
     """Preserve top-source coverage while compacting each source around the query."""
     if not selected:
         return "", []
-    headers = [f"=== SOURCE_PATH: {row[0]} ===\nSECTION: {row[1]}\n{row[3]}\n\n"
-               for _score, _cid, row in selected]
+    # The embedding prefix repeats the path, title and section. Keep it in the
+    # audit manifest instead of charging the answer budget for those twice.
+    headers = []
+    for _score, _cid, row in selected:
+        header = f"=== SOURCE_PATH: {row[0]} ===\nSECTION: {row[1]}\n"
+        qualifiers = [f"{key}={value}" for key, value in
+                      (("status", row[5]), ("updated", row[6])) if value]
+        if qualifiers:
+            header += "METADATA: " + ", ".join(qualifiers) + "\n"
+        headers.append(header + "\n")
     text_budget = max(220 * len(selected), budget_chars - sum(map(len, headers))
                       - 2 * (len(selected) - 1))
     per_source = max(220, text_budget // len(selected))
@@ -298,7 +306,9 @@ def assemble_context(selected: list[tuple], query: str, budget_chars: int) -> tu
         block = (header + evidence)[:remaining]
         blocks.append(block)
         manifest.append({"path": row[0], "chunk_id": cid, "score": round(score, 6),
-                         "source_class": row[4], "authority": row[7], "chars": len(block)})
+                         "source_class": row[4], "authority": row[7], "chars": len(block),
+                         "heading": row[1], "prefix": row[3],
+                         "status": row[5], "updated": row[6]})
     return "\n\n".join(blocks), manifest
 
 

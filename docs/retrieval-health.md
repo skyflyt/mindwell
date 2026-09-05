@@ -43,6 +43,43 @@ corpus size, provider/model, cache state, source coverage, latency, and context 
 Report lexical and semantic results separately. A small fixture can catch a regression;
 it cannot establish accuracy on another person's vault.
 
+### Audit the evidence supplied to the answer model
+
+A source can rank first while the answer-bearing sentence never reaches the model.
+Save the exact initial answer context, selected chunks, source manifest, question-set
+hash, and cache provenance with each evaluation. Treat those artifacts as private
+vault content and exclude them from indexing; otherwise later searches can retrieve
+the benchmark's own answers. A list of source paths is insufficient to reproduce a
+passage-selection failure.
+
+For a context-selection experiment, replay the captured chunks with the same fixed
+questions. This isolates compaction from live note edits, refresh timing, and query
+embedding changes. Record replay latency as replay overhead, not retrieval speed.
+Keep the baseline intact, and reject replays with missing evidence or changed questions.
+
+Do not score factual keywords in appended citation labels. A project number in a
+filename does not establish that the answer named the project. Score the narrative
+separately; keyword presence still cannot establish factual correctness. Citation-path
+membership checks also cannot establish that a passage supports a claim.
+
+### Spend the context budget on evidence
+
+Mindwell keeps the generated embedding prefix in the result manifest. The answer
+context includes source path and section once, along with available status and update
+date qualifiers. Repeating the generated path/title/section prefix uses space that
+could hold a supporting sentence or another source.
+
+The fictional fixture in `tests/test_evidence_budget.py` supplies five selected
+bulletins with long headings. At a 2,500-character budget, the previous header retained
+four sources and four recipient facts (2,382 characters); the revised header retains
+all five (2,368 characters). This is a deterministic passage-coverage check, not a
+measurement of answer-model accuracy or a claim about other vaults.
+
+A larger context is another candidate to measure, not an automatic improvement.
+Report question-level regressions alongside aggregate scores. Keep incomplete names,
+contradictory sources, and date-sensitive expectations visible rather than changing
+the expected answers to make a run pass.
+
 ## Keep operating instructions aligned
 
 When an implementation changes, update the command examples and startup guidance
