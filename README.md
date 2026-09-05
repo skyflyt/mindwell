@@ -137,15 +137,17 @@ git -C "$VAULT" rebase origin/main
 
 # session end - commit only the paths this session wrote
 git -C "$VAULT" add daily/2026-01-15.md wiki/topic-this-session-edited.md
-git -C "$VAULT" commit -m "what this session did"
+git -C "$VAULT" commit -m "what this session did" -- daily/2026-01-15.md wiki/topic-this-session-edited.md
 git -C "$VAULT" push
 ```
 
 Two details in those commands are load-bearing, and both were learned the
 expensive way - the "Two sessions, one machine" section below explains them.
 The pull is a fetch plus a rebase onto the remote-tracking ref, rather than a
-`git pull` that rebases onto `FETCH_HEAD`. And the commit stages named paths
-rather than `add -A`, so it can only ever contain work this session authored.
+`git pull` that rebases onto `FETCH_HEAD`. Both staging and committing name
+the session's paths. A bare `git commit` includes other sessions' staged files
+even when your own `git add` named only your paths. Coordinate ownership when
+two sessions need to edit the same file; path scoping cannot separate their edits.
 If exactly one session or person touches the vault at a time, `git pull
 --rebase --autostash` and `git add -A` behave fine; the moment a second
 concurrent writer exists they stop being safe, and you rarely get to schedule
@@ -468,6 +470,11 @@ mindwell index "<VAULT_PATH>" --rebuild
 - External actions and schedule registration require approval.
 
 ## Commands
+
+Doctor distinguishes runtime readiness from a readable, populated index. Read
+`checks.index` and `warnings` as well as `ready`; a missing cache can be built by a
+ready runtime. Cache checks do not establish source freshness or answer accuracy.
+See [retrieval health](docs/retrieval-health.md) for the verification workflow.
 
 ```text
 mindwell recommend PATH [--prefer-semantic] [--basic]

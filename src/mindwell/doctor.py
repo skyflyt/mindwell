@@ -14,6 +14,46 @@ from .guidance import non_local_ollama_caveat, ollama_unreachable_guidance
 REQUIRED_CHECKS = ("python", "vault", "config", "vault_writable", "sqlite_fts5")
 
 
+def inspect_index(path: Path) -> dict:
+    """Check the stored retrieval artifact without creating or rebuilding it.
+
+    This is cache health, not a claim that the notes or embeddings are current.
+    Retrieval refreshes by default; doctor must not embed private notes.
+    """
+    result = {"ok": False, "value": str(path), "freshness": "not assessed"}
+    if not path.is_file():
+        return {**result, "state": "missing", "detail": "run mindwell index to build the cache"}
+    try:
+        con = sqlite3.connect(path.resolve().as_uri() + "?mode=ro", uri=True, timeout=2)
+        try:
+            con.execute("BEGIN")  # All checks describe one consistent read snapshot.
+            integrity = con.execute("PRAGMA quick_check").fetchone()[0]
+            if integrity != "ok":
+                return {**result, "state": "invalid", "detail": integrity}
+            files = con.execute("SELECT count(*) FROM meta").fetchone()[0]
+            chunks = con.execute("SELECT count(*) FROM chunks").fetchone()[0]
+            fts_rows = con.execute("SELECT count(*) FROM fts").fetchone()[0]
+            # Exercise MATCH as well as table reads: an ordinary table named fts
+            # must not masquerade as a usable full-text index.
+            con.execute("SELECT id FROM fts WHERE fts MATCH ? LIMIT 1",
+                        ('"mindwell"',)).fetchall()
+            result.update(files=files, chunks=chunks, fts_rows=fts_rows)
+            mismatch = con.execute("""SELECT 1 FROM (
+                SELECT id,path FROM chunks EXCEPT SELECT id,path FROM fts
+                ) LIMIT 1""").fetchone()
+            if chunks != fts_rows or mismatch:
+                return {**result, "state": "inconsistent",
+                        "detail": "chunk and full-text entries disagree; rebuild the index"}
+            if not chunks:
+                return {**result, "state": "empty",
+                        "detail": "no searchable chunks; check source notes and exclusions, then index"}
+            return {**result, "ok": True, "state": "readable"}
+        finally:
+            con.close()
+    except (OSError, sqlite3.Error) as exc:
+        return {**result, "state": "unreadable", "detail": str(exc)}
+
+
 def inspect(vault: Path) -> dict:
     config = load_config(vault)
     installation_path = vault / "config" / "installation.json"
@@ -38,7 +78,7 @@ def inspect(vault: Path) -> dict:
         "core_contract": {"ok": all((vault / name).exists() for name in
                                      ("AGENTS.md", "AGENT.md", "USER.md", "MEMORY.md")),
                           "value": "AGENTS.md, AGENT.md, USER.md, MEMORY.md"},
-        "index": {"ok": index_path(vault).exists(), "value": str(index_path(vault))},
+        "index": inspect_index(index_path(vault)),
     }
     try:
         con = sqlite3.connect(":memory:")
