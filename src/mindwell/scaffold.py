@@ -9,7 +9,7 @@ from pathlib import Path
 
 from . import __version__
 from .config import DEFAULT_CONFIG, backup_root
-from .fsio import atomic_write_text
+from .fsio import atomic_write_text, atomic_write_bytes
 from .automations import (LEGACY_TEMPLATE_HASHES, automation_template_files,
                           write_automation_plan)
 
@@ -280,12 +280,27 @@ def _backup_vault(vault: Path, relative_paths: list[str]) -> Path | None:
     if not existing:
         return None
     stamp = datetime.now(dt_timezone.utc).strftime("%Y%m%dT%H%M%SZ")
-    destination_root = backup_root(vault) / stamp
+    root = backup_root(vault)
+    # Reserve a distinct directory even if upgrade/restore share a timestamp.
+    # Never overwrite an existing backup, including the one being restored.
+    for sequence in range(1000000):
+        name = stamp if sequence == 0 else f"{stamp}-{sequence:06d}"
+        destination_root = root / name
+        try:
+            destination_root.mkdir()
+            break
+        except FileExistsError:
+            continue
+    else:
+        raise RuntimeError('Could not reserve a unique backup directory')
+    incomplete = destination_root / '.incomplete'
+    incomplete.touch()
     for rel in existing:
         source = vault / rel
         dest = destination_root / rel
         dest.parent.mkdir(parents=True, exist_ok=True)
-        dest.write_bytes(source.read_bytes())
+        atomic_write_bytes(dest, source.read_bytes())
+    incomplete.unlink()
     return destination_root
 
 
@@ -468,7 +483,7 @@ def upgrade_vault(vault: Path, agent_name: str | None = None,
     }
 
 
-_BACKUP_STAMP_RE = re.compile(r"^\d{8}T\d{6}Z$")
+_BACKUP_STAMP_RE = re.compile(r"^\d{8}T\d{6}Z(?:-\d{6})?$")
 
 
 def list_backups(vault: Path) -> list[dict]:
@@ -479,10 +494,12 @@ def list_backups(vault: Path) -> list[dict]:
     root = backup_root(vault)
     entries = []
     for candidate in sorted(root.iterdir(), reverse=True):
-        if not candidate.is_dir() or not _BACKUP_STAMP_RE.match(candidate.name):
+        if not candidate.is_dir() or not _BACKUP_STAMP_RE.match(candidate.name) or (candidate / '.incomplete').exists():
             continue
         files = sorted(p.relative_to(candidate).as_posix()
                        for p in candidate.rglob("*") if p.is_file())
+        if not files:
+            continue
         stamp = candidate.name
         created = (f"{stamp[0:4]}-{stamp[4:6]}-{stamp[6:8]}T"
                    f"{stamp[9:11]}:{stamp[11:13]}:{stamp[13:15]}Z")
@@ -546,7 +563,7 @@ def restore_backup(vault: Path, stamp: str | None = None,
     for rel in would_restore:
         target = vault / rel
         target.parent.mkdir(parents=True, exist_ok=True)
-        target.write_bytes((backup_dir / rel).read_bytes())
+        atomic_write_bytes(target, (backup_dir / rel).read_bytes())
     result["applied"] = True
     result["restored"] = would_restore
     result["would_restore"] = []

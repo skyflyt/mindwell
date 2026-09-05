@@ -2,7 +2,30 @@
 
 ## Unreleased
 
+## 0.4.4 — 2026-09-05
+
+### Retrieval reliability
+
+- Added read-only cache integrity checks to `doctor`, separate from runtime readiness
+  and source freshness. Incomplete refreshes now warn when retrieval falls back to
+  cached lexical evidence.
+- Removed repeated generated source identifiers from answer context, preserving
+  status/date qualifiers and audit metadata. A fictional five-source fixture now
+  retains all five supporting facts within the same context budget.
+- Documented evidence capture, controlled replay, narrative-only scoring, and
+  question-level regressions. No private evaluation material is included.
+- Added the privacy scan to the release gate. The shared-vault Git example scopes
+  both staging and committing to the session's own files.
+
 ### Fixed
+
+- **Upgrade/restore backup collisions:** operations in the same second now reserve
+  distinct backup directories. A restore cannot overwrite its own source snapshot.
+  Failed snapshots are excluded from restore choices, and binary backup/restore writes
+  use atomic replacement. Regression fixtures cover a frozen clock and write failures.
+- **Installed-package verification:** releases exercise initialization, source edits
+  and removal, preserved customization, upgrade backups, and restore from a fresh
+  wheel installation before publishing.
 
 - **Every file Mindwell writes now lands atomically** (new
   `mindwell.fsio.atomic_write_text`, used by scaffold, upgrade, automations,
