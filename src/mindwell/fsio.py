@@ -29,6 +29,11 @@ def atomic_write_text(path: Path, text: str, encoding: str = "utf-8") -> None:
     ``os.replace`` is only atomic within one filesystem.
     """
     data = text.encode(encoding)
+    atomic_write_bytes(path, data)
+
+
+def atomic_write_bytes(path: Path, data: bytes) -> None:
+    """Atomically replace binary content, including backup and restore files."""
     fd, tmp = tempfile.mkstemp(dir=str(path.parent),
                                prefix=f".{path.name}.", suffix=".tmp")
     try:
