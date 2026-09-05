@@ -12,6 +12,9 @@ Indexes live outside the vault. Each chunk retains its page, heading, ordinal, s
 
 The answer model is deliberately outside the trust boundary. Retrieval recall and citation correctness are measured separately because a model can produce a plausible answer after weak retrieval—or cite the wrong path after perfect retrieval.
 
+See [retrieval health](retrieval-health.md) for checking cache integrity, source
+coverage, freshness limitations, and citation support as separate observations.
+
 Optional private external workspaces sit outside every layer above. The main vault may
 retain an alias and non-sensitive purpose, but never the workspace location or content.
 Locations are supplied by the user per task and are not added to the Mindwell index.

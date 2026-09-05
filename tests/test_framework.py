@@ -89,6 +89,7 @@ class FrameworkTests(unittest.TestCase):
             note.write_text("# Cedar\n\nAvery owns the Cedar forecast.")
             result = retrieve(vault, "Who owns the Cedar forecast?")
             self.assertEqual(1, result["index_refresh"]["changed_files"])
+            self.assertEqual("complete", result["index_refresh_status"])
             self.assertIn("projects/new-work.md", [item["path"] for item in result["results"]])
 
     def test_retrieve_degrades_to_lexical_when_ollama_unreachable(self):
@@ -109,6 +110,9 @@ class FrameworkTests(unittest.TestCase):
 
             self.assertEqual("lexical (ollama unreachable, degraded)", result["provider"])
             self.assertTrue(result["warnings"])
+            self.assertEqual("incomplete", result["index_refresh_status"])
+            self.assertTrue(any("may omit new or changed notes" in warning
+                                for warning in result["warnings"]))
             self.assertTrue(result["guidance"])
             self.assertIn("wiki/projects/atlas.md", [item["path"] for item in result["results"]])
 

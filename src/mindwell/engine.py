@@ -308,12 +308,14 @@ def retrieve(vault: Path, query: str, mode: str = "standard",
     # unchanged vaults are inexpensive while new and edited notes are available
     # immediately without asking the user to remember a separate index command.
     ollama_error = None
+    refresh_status = "complete" if refresh else "skipped"
     try:
         refresh_stats = build(vault) if refresh else None
     except OllamaUnavailable as exc:
         # Indexing couldn't embed changed notes, but the lexical ranking below
         # is computed independently - fall back to it instead of crashing.
         refresh_stats = None
+        refresh_status = "incomplete"
         ollama_error = exc
     config, con = load_config(vault), connect(vault)
     cfg = config["context_modes"][mode]
@@ -353,7 +355,8 @@ def retrieve(vault: Path, query: str, mode: str = "standard",
     body, manifest = assemble_context(selected[:cfg["chunks"]], query, cfg["budget_chars"])
     provider = config["retrieval_provider"]
     result = {"mode": mode, "provider": provider, "query": query,
-              "index_refresh": refresh_stats, "context": body,
+              "index_refresh": refresh_stats, "index_refresh_status": refresh_status,
+              "context": body,
               "context_chars": len(body), "estimated_tokens": math.ceil(len(body) / 4),
               "results": manifest}
     if ollama_error is not None:
@@ -364,5 +367,9 @@ def retrieve(vault: Path, query: str, mode: str = "standard",
                               "requires running the whole `retrieve` call on the "
                               "machine where Ollama is reachable - see 'guidance'."]
         result["guidance"] = guidance["guidance"]
+    if refresh_status == "incomplete":
+        result.setdefault("warnings", []).append(
+            "Index refresh did not complete. Cached results may omit new or changed notes "
+            "or retain removed notes; verify source files before making current-state claims.")
     con.close()
     return result
