@@ -10,6 +10,16 @@ Mindwell separates records from interpretations.
 
 Indexes live outside the vault. Each chunk retains its page, heading, ordinal, source class, status, updated date, and authority tier. Sparse and semantic rankings are fused before duplicate pages are removed. Query intent may promote current, historical, or procedural sources; the base score remains visible.
 
+`core_paths` and `current_paths` in `config/mindwell.json` assign authority 5 to
+exact vault-relative file paths. Each supplied list replaces its defaults; an empty
+list disables that tier. Use the case shown in the vault filenames. Forward and
+backward slashes and a leading `./` are equivalent. Core wins if both lists name
+the same file. Defaults cover the agent contract, memory, user and wiki rules
+files (including `AGENTS.md` and legacy `LOBY.md`), plus the current-state pages.
+The next index refresh updates these classifications even for unchanged notes,
+without regenerating their embeddings. Retrieval refreshes by default;
+`--no-refresh` continues to use the cached classifications.
+
 The answer model is deliberately outside the trust boundary. Retrieval recall and citation correctness are measured separately because a model can produce a plausible answer after weak retrieval—or cite the wrong path after perfect retrieval.
 
 See [retrieval health](retrieval-health.md) for checking cache integrity, source

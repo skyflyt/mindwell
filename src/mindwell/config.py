@@ -17,7 +17,7 @@ DEFAULT_CONFIG = {
         "deep": {"top_k": 10, "chunks": 6, "budget_chars": 5000}
     },
     "exclude_dirs": [".git", ".obsidian", ".trash", "_lint", "node_modules", "__pycache__"],
-    "core_paths": ["MEMORY.md", "AGENT.md", "USER.md", "wiki/AGENT-WIKI-RULES.md"],
+    "core_paths": ["MEMORY.md", "AGENTS.md", "AGENT.md", "LOBY.md", "USER.md", "wiki/AGENT-WIKI-RULES.md"],
     "current_paths": ["wiki/now.md", "wiki/action-items.md", "wiki/decisions.md"]
 }
 
