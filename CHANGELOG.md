@@ -2,6 +2,11 @@
 
 ## Unreleased
 
+- Honor configured `core_paths` and `current_paths` when assigning retrieval
+  authority. Refresh classification for unchanged cached notes without recomputing
+  embeddings. Include `AGENTS.md` in the default core tier and preserve `LOBY.md`
+  compatibility.
+
 ## 0.4.4 — 2026-09-05
 
 ### Retrieval reliability

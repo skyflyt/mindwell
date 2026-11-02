@@ -7,9 +7,9 @@ import re
 import sqlite3
 import urllib.request
 from dataclasses import dataclass
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
-from .config import index_path, load_config
+from .config import DEFAULT_CONFIG, index_path, load_config
 from .guidance import ollama_unreachable_guidance
 
 
@@ -73,11 +73,15 @@ def frontmatter(text: str) -> tuple[dict, str]:
     return data, text[end + 5:]
 
 
-def classify(path: str, meta: dict) -> tuple[str, int]:
+def classify(path: str, meta: dict, config: dict | None = None) -> tuple[str, int]:
+    config = DEFAULT_CONFIG if config is None else config
+    path = PurePosixPath(path.replace("\\", "/")).as_posix()
     low = path.lower()
-    if path in {"MEMORY.md", "AGENT.md", "LOBY.md", "USER.md", "wiki/AGENT-WIKI-RULES.md"}:
+    if path in {PurePosixPath(p.replace("\\", "/")).as_posix()
+                for p in config.get("core_paths", DEFAULT_CONFIG["core_paths"])}:
         return "core", 5
-    if path in {"wiki/now.md", "wiki/action-items.md", "wiki/decisions.md"}:
+    if path in {PurePosixPath(p.replace("\\", "/")).as_posix()
+                for p in config.get("current_paths", DEFAULT_CONFIG["current_paths"])}:
         return "current", 5
     if low.startswith("projects/active/"):
         return "project", 5
@@ -171,7 +175,13 @@ def build(vault: Path, rebuild: bool = False) -> dict:
             seen.add(rel)
             text = path.read_text(encoding="utf-8", errors="replace")
             digest = hashlib.sha256(text.encode()).hexdigest()
+            meta, _ = frontmatter(text)
+            source_class, authority = classify(rel, meta, config)
             if known.get(rel) == (digest, index_model):
+                # Path policy can change without a note or embedding changing.
+                con.execute("UPDATE chunks SET source_class=?, authority=? WHERE path=? "
+                            "AND (source_class!=? OR authority!=?)",
+                            (source_class, authority, rel, source_class, authority))
                 continue
             note_chunks = chunks_for(vault, path, text, config)
             vectors = [None] * len(note_chunks)
@@ -179,7 +189,6 @@ def build(vault: Path, rebuild: bool = False) -> dict:
                 vectors = []
                 for start in range(0, len(note_chunks), 16):
                     vectors.extend(embed(config, [c.text for c in note_chunks[start:start + 16]]))
-            meta, _ = frontmatter(text); source_class, authority = classify(rel, meta)
             con.execute("DELETE FROM fts WHERE path=?", (rel,)); con.execute("DELETE FROM chunks WHERE path=?", (rel,))
             for chunk, vector in zip(note_chunks, vectors):
                 if vector is not None:
