@@ -101,6 +101,78 @@ the method is structurally incapable of ever showing one, whether the gap is
 one seat or fifty. Before trusting a number that agrees with reality, ask
 whether your counting method could have disagreed.
 
+### A miss proves only that nothing was named for it
+
+You are sizing a feature request, so you search the repository for paths
+matching the feature's name. Zero hits. An agent in a production estate read
+that miss as "not built" and planned several weeks of greenfield work, gated
+on a data-retention decision. The feature had shipped months earlier and held
+live records. Its code sat inside one server file of over 400,000 characters
+and a schema file, and neither filename mentioned it.
+
+A hit proves existence. A miss proves only that no path carries the name. One
+read-only query against the running system (its API, an admin endpoint, a
+connector) found the feature and shrank the estimate to a single route. Before
+a negative search carries a positive conclusion, ask what else could explain
+the empty result.
+
+### A success field may assert only that you tried
+
+A bulk-decision tool returned `queued: true` for each row, and the agent
+reported 70 tickets created. The ticketing system held 15. It rate-limited the
+burst after about 15 creates, and the code recorded a ticket row only on
+success, so each rejected create left nothing behind: no record of the owed
+work, nothing for the close-out gate to count, and a UI that showed "pending"
+forever. The agent repeated the wrong number after a second batch.
+
+The field meant "decision recorded, creation attempted." Read your own tool's
+success fields as skeptically as a vendor's; because you wrote the field, you
+assume you know what it asserts. Two fixes held up. Persist the intent before
+the outbound call, so a failure becomes a countable state. Make the gate count
+work owed instead of work present.
+
+The fix carried a proxy of its own. The durable queue shipped with green tests
+and a green deploy, and its first live drain created zero tickets: the handler
+read an environment variable the deployment never set. The queue lost nothing
+and recorded the reason on every job, so the gap surfaced in minutes. Green
+tests and a green deploy stand in for "the feature does its job." Only the
+first real run measures it.
+
+### A quiet detector is not a correct one
+
+A shared-log conflict checker had to decide whether two lines about the same
+ticket disagree. Three heuristics held that job in turn: token overlap, then
+identifier co-occurrence, then polarity regexes (closed against reopened,
+approved against denied). Each scored zero true positives across every real
+flag it raised. The third fired once in 547 runs, on three pairs, all false.
+It read "reviewed the work orders before closing, not ready" as a claim that
+the ticket had closed. Its rarity looked like accuracy.
+
+Score a detector on every flag it raises against real content, and test it on
+invented pairs where you know the answer. Low volume tells you nothing about
+precision.
+
+The replacement sends each candidate pair to a hosted classifier that returns
+a typed probability, with no generated text to parse. On the same real content
+it cleared all three false pairs; on fourteen invented pairs it caught six of
+six real contradictions with no false flags. The candidate lines mostly
+describe named people, so the call carries guards:
+
+- Send a fixed window around the identifier, never the whole line.
+- Exclude whole classes of data outright (monetary identifiers, the curated
+  personal-memory file).
+- Cap requests per call.
+- On a missing key, a timeout, or a malformed answer, fall back to the local
+  heuristic and trip a breaker for the rest of the call. A dead API must not
+  hang an operation that holds a write lease.
+- Keep a kill switch that forces the local path.
+- Log who judged each pair, the probability, and what the fallback would have
+  said. That log is the scorecard you retune from.
+
+Write the threshold's margin next to the number. Here it is thin (worst real
+negative 0.51, weakest known positive 0.61), and whoever tunes it next needs
+to know that.
+
 ## Receipts: the fix that generalizes
 
 The repeated answer above is a **receipt**: a small record the job writes
