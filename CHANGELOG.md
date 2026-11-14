@@ -1,11 +1,20 @@
 # Changelog
 
-## Unreleased
+## 0.4.5 — 2026-11-14
+
+### Retrieval
 
 - Honor configured `core_paths` and `current_paths` when assigning retrieval
   authority. Refresh classification for unchanged cached notes without recomputing
   embeddings. Include `AGENTS.md` in the default core tier and preserve `LOBY.md`
   compatibility.
+
+### Docs
+
+- `docs/detectors.md`: three lessons on detectors that end up measuring a proxy
+  instead of the thing itself.
+- `docs/multi-writer.md`: claim the work before you start it, so two agents
+  don't take on the same job.
 
 ## 0.4.4 — 2026-09-05
 
