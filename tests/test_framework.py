@@ -35,13 +35,13 @@ class FrameworkTests(unittest.TestCase):
 
     def test_runtime_and_package_versions_match(self):
         project = Path(__file__).parents[1]
-        text = (project / "pyproject.toml").read_text()
+        text = (project / "pyproject.toml").read_text(encoding="utf-8")
         package_version = re.search(r'^version = "([^"]+)"', text, re.M).group(1)
         self.assertEqual(package_version, __version__)
 
     def test_python_floor_is_310(self):
         project = Path(__file__).parents[1]
-        text = (project / "pyproject.toml").read_text()
+        text = (project / "pyproject.toml").read_text(encoding="utf-8")
         requires = re.search(r'^requires-python = "([^"]+)"', text, re.M).group(1)
         self.assertEqual(">=3.10", requires)
         # sys.version_info is a tuple subclass, so this is the same comparison
@@ -61,12 +61,12 @@ class FrameworkTests(unittest.TestCase):
             vault = Path(tmp)
             init_vault(vault, agent_name="Nova")
             self.assertTrue((vault / "AGENTS.md").exists())
-            self.assertIn("# Nova", (vault / "AGENT.md").read_text())
+            self.assertIn("# Nova", (vault / "AGENT.md").read_text(encoding="utf-8"))
             self.assertEqual("qwen3-embedding:0.6b",
-                             json.loads((vault / "config/mindwell.json").read_text())["embedding_model"])
+                             json.loads((vault / "config/mindwell.json").read_text(encoding="utf-8"))["embedding_model"])
             self.assertEqual("lexical",
-                             json.loads((vault / "config/mindwell.json").read_text())["retrieval_provider"])
-            installation = json.loads((vault / "config/installation.json").read_text())
+                             json.loads((vault / "config/mindwell.json").read_text(encoding="utf-8"))["retrieval_provider"])
+            installation = json.loads((vault / "config/installation.json").read_text(encoding="utf-8"))
             self.assertEqual(__version__, installation["mindwell_version"])
 
     def test_lexical_setup_indexes_and_retrieves_without_embedding(self):
@@ -74,7 +74,7 @@ class FrameworkTests(unittest.TestCase):
             vault = Path(tmp); init_vault(vault)
             project = vault / "wiki" / "projects" / "atlas.md"
             project.parent.mkdir(parents=True, exist_ok=True)
-            project.write_text("# Atlas migration\n\nMorgan Reed owns the Atlas migration.")
+            project.write_text("# Atlas migration\n\nMorgan Reed owns the Atlas migration.", encoding="utf-8")
             stats = build(vault, rebuild=True)
             result = retrieve(vault, "Who owns the Atlas migration?")
             self.assertGreater(stats["chunks"], 0)
@@ -86,7 +86,7 @@ class FrameworkTests(unittest.TestCase):
             vault = Path(tmp); init_vault(vault)
             build(vault, rebuild=True)
             note = vault / "projects" / "new-work.md"
-            note.write_text("# Cedar\n\nAvery owns the Cedar forecast.")
+            note.write_text("# Cedar\n\nAvery owns the Cedar forecast.", encoding="utf-8")
             result = retrieve(vault, "Who owns the Cedar forecast?")
             self.assertEqual(1, result["index_refresh"]["changed_files"])
             self.assertEqual("complete", result["index_refresh_status"])
@@ -97,14 +97,14 @@ class FrameworkTests(unittest.TestCase):
             vault = Path(tmp); init_vault(vault)
             note = vault / "wiki" / "projects" / "atlas.md"
             note.parent.mkdir(parents=True, exist_ok=True)
-            note.write_text("# Atlas migration\n\nMorgan Reed owns the Atlas migration.")
+            note.write_text("# Atlas migration\n\nMorgan Reed owns the Atlas migration.", encoding="utf-8")
             build(vault, rebuild=True)  # lexical index already populated
 
             config_path = vault / "config" / "mindwell.json"
-            config = json.loads(config_path.read_text())
+            config = json.loads(config_path.read_text(encoding="utf-8"))
             config["retrieval_provider"] = "ollama"
             config["ollama_url"] = "http://127.0.0.1:1"  # refused immediately
-            config_path.write_text(json.dumps(config))
+            config_path.write_text(json.dumps(config), encoding="utf-8")
 
             result = retrieve(vault, "Who owns the Atlas migration?")  # must not raise
 
@@ -119,12 +119,12 @@ class FrameworkTests(unittest.TestCase):
     def test_index_reports_clean_error_when_ollama_unreachable(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp); init_vault(vault)
-            (vault / "note.md").write_text("# Note\n\nSome content.")
+            (vault / "note.md").write_text("# Note\n\nSome content.", encoding="utf-8")
             config_path = vault / "config" / "mindwell.json"
-            config = json.loads(config_path.read_text())
+            config = json.loads(config_path.read_text(encoding="utf-8"))
             config["retrieval_provider"] = "ollama"
             config["ollama_url"] = "http://127.0.0.1:1"
-            config_path.write_text(json.dumps(config))
+            config_path.write_text(json.dumps(config), encoding="utf-8")
 
             from mindwell.engine import OllamaUnavailable
             with self.assertRaises(OllamaUnavailable) as ctx:
@@ -148,10 +148,10 @@ class FrameworkTests(unittest.TestCase):
             vault = Path(tmp)
             init_vault(vault, profile="personal-ops")
             config_path = vault / "config" / "mindwell.json"
-            config = json.loads(config_path.read_text())
+            config = json.loads(config_path.read_text(encoding="utf-8"))
             config["retrieval_provider"] = "ollama"
             config["ollama_url"] = "http://127.0.0.1:1"
-            config_path.write_text(json.dumps(config))
+            config_path.write_text(json.dumps(config), encoding="utf-8")
 
             result = doctor_inspect(vault)
             self.assertEqual("semantic-unreachable", result["mode"])
@@ -165,12 +165,12 @@ class FrameworkTests(unittest.TestCase):
             vault = Path(tmp)
             init_vault(vault, profile="personal-ops")
             config_path = vault / "config" / "mindwell.json"
-            config = json.loads(config_path.read_text())
+            config = json.loads(config_path.read_text(encoding="utf-8"))
             config["retrieval_provider"] = "ollama"
             # RFC 5737 documentation address: non-localhost (so the security
             # notice fires) without tripping privacy_scan's private-ip pattern.
             config["ollama_url"] = "http://192.0.2.50:11434"
-            config_path.write_text(json.dumps(config))
+            config_path.write_text(json.dumps(config), encoding="utf-8")
 
             fake_response = MagicMock()
             fake_response.read.return_value = b'{"models": []}'
@@ -186,7 +186,7 @@ class FrameworkTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
             init_vault(vault, environment="sandbox")
-            installation = json.loads((vault / "config/installation.json").read_text())
+            installation = json.loads((vault / "config/installation.json").read_text(encoding="utf-8"))
             self.assertEqual("sandbox", installation["environment"])
             self.assertIn("mindwell.cli", installation["runner_hint"])
 
@@ -195,33 +195,33 @@ class FrameworkTests(unittest.TestCase):
             vault = Path(tmp)
             init_vault(vault, profile="personal-ops", automations="core",
                        timezone="America/Los_Angeles")
-            self.assertIn("folder-capable", (vault / "START-HERE.md").read_text())
+            self.assertIn("folder-capable", (vault / "START-HERE.md").read_text(encoding="utf-8"))
             self.assertTrue((vault / "recipes/batch-excel-analysis.md").exists())
-            plan = json.loads((vault / "automations/plan.json").read_text())
+            plan = json.loads((vault / "automations/plan.json").read_text(encoding="utf-8"))
             self.assertEqual("America/Los_Angeles", plan["timezone"])
             self.assertEqual(4, len(plan["tasks"]))
             self.assertEqual("never_without_confirmation",
                              plan["safety"]["external_sends"])
             plan_path = vault / "automations/plan.json"
-            plan_path.write_text('{"customized": true}\n')
+            plan_path.write_text('{"customized": true}\n', encoding="utf-8")
             init_vault(vault, profile="personal-ops", automations="core")
-            self.assertEqual({"customized": True}, json.loads(plan_path.read_text()))
+            self.assertEqual({"customized": True}, json.loads(plan_path.read_text(encoding="utf-8")))
 
     def test_private_workspaces_are_optional_and_never_persist_locations(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
             init_vault(vault, profile="personal-ops", private_workspaces=True)
             registry = json.loads(
-                (vault / "config/private-workspaces.json").read_text())
+                (vault / "config/private-workspaces.json").read_text(encoding="utf-8"))
             self.assertFalse(registry["policy"]["persist_locations"])
             self.assertTrue(registry["policy"]["require_location_each_task"])
             self.assertEqual([], registry["workspaces"])
             self.assertTrue(
                 (vault / "recipes/private-external-workspaces.md").exists())
             self.assertIn("Never store, infer, search for, derive, or reuse",
-                          (vault / "AGENTS.md").read_text())
+                          (vault / "AGENTS.md").read_text(encoding="utf-8"))
             installation = json.loads(
-                (vault / "config/installation.json").read_text())
+                (vault / "config/installation.json").read_text(encoding="utf-8"))
             self.assertEqual(["private-workspaces"],
                              installation["optional_features"])
 
@@ -243,7 +243,7 @@ class FrameworkTests(unittest.TestCase):
     def test_advisor_detects_existing_vault(self):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp)
-            (vault / "existing.md").write_text("# Existing")
+            (vault / "existing.md").write_text("# Existing", encoding="utf-8")
             advice = recommend(vault)
             self.assertEqual("existing-vault", advice["recommendation"]["track"])
             self.assertTrue(advice["checks"]["destination"]["has_markdown"])
@@ -292,7 +292,7 @@ class FrameworkTests(unittest.TestCase):
         with tempfile.TemporaryDirectory() as tmp:
             vault = Path(tmp); wiki = vault / "wiki"; wiki.mkdir()
             (wiki / "x.md").write_text(
-                "> [!gap] Missing owner\n> claim: Owner is unknown.\n> sources: [[source/a]]\n> status: open\n")
+                "> [!gap] Missing owner\n> claim: Owner is unknown.\n> sources: [[source/a]]\n> status: open\n", encoding="utf-8")
             self.assertEqual("Missing owner", scan(vault)[0]["title"])
 
     def test_upgrade_preserves_customized_agents_md_and_reconciles_version(self):
@@ -311,9 +311,9 @@ class FrameworkTests(unittest.TestCase):
             notes_path.write_text("# Notes\n\nCaptain's log.\n", encoding="utf-8")
 
             install_path = vault / "config" / "installation.json"
-            installation = json.loads(install_path.read_text())
+            installation = json.loads(install_path.read_text(encoding="utf-8"))
             installation["mindwell_version"] = "0.1.0"
-            install_path.write_text(json.dumps(installation))
+            install_path.write_text(json.dumps(installation), encoding="utf-8")
 
             before_agents = agents_path.read_bytes()
             before_notes = notes_path.read_bytes()
@@ -329,7 +329,7 @@ class FrameworkTests(unittest.TestCase):
             self.assertTrue(result["doctor"]["ready"])
             self.assertTrue(result["doctor"]["checks"]["version_match"]["ok"])
             self.assertEqual(__version__,
-                             json.loads(install_path.read_text())["mindwell_version"])
+                             json.loads(install_path.read_text(encoding="utf-8"))["mindwell_version"])
 
     def test_upgrade_is_idempotent_on_an_already_current_vault(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -358,18 +358,18 @@ class FrameworkTests(unittest.TestCase):
             vault = Path(tmp) / "vault"
             init_vault(vault)
             install_path = vault / "config" / "installation.json"
-            installation = json.loads(install_path.read_text())
+            installation = json.loads(install_path.read_text(encoding="utf-8"))
 
             memory_path = vault / "MEMORY.md"
             old_template_text = "# Durable memory (old wording)\n"
             memory_path.write_text(old_template_text, encoding="utf-8")
             old_hash = hashlib.sha256(old_template_text.encode("utf-8")).hexdigest()
             installation.setdefault("scaffold_hashes", {})["MEMORY.md"] = old_hash
-            install_path.write_text(json.dumps(installation))
+            install_path.write_text(json.dumps(installation), encoding="utf-8")
 
             result = upgrade_vault(vault)
             self.assertIn("MEMORY.md", result["files"]["updated"])
-            self.assertEqual(scaffold.FILES["MEMORY.md"], memory_path.read_text())
+            self.assertEqual(scaffold.FILES["MEMORY.md"], memory_path.read_text(encoding="utf-8"))
 
     def test_upgrade_preserves_a_user_modified_non_canonical_file(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -379,7 +379,7 @@ class FrameworkTests(unittest.TestCase):
             memory_path.write_text("# My own memory format\n", encoding="utf-8")
             result = upgrade_vault(vault)
             self.assertIn("MEMORY.md", result["files"]["preserved_customized"])
-            self.assertEqual("# My own memory format\n", memory_path.read_text())
+            self.assertEqual("# My own memory format\n", memory_path.read_text(encoding="utf-8"))
 
     def test_upgrade_without_prior_init_reports_error_and_suggests_init(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -398,15 +398,15 @@ class FrameworkTests(unittest.TestCase):
             memory_path = vault / "MEMORY.md"
             memory_path.write_text("# Custom\n", encoding="utf-8")
             install_path = vault / "config" / "installation.json"
-            installation = json.loads(install_path.read_text())
+            installation = json.loads(install_path.read_text(encoding="utf-8"))
             installation["mindwell_version"] = "0.1.0"
-            install_path.write_text(json.dumps(installation))
-            before_install = install_path.read_text()
+            install_path.write_text(json.dumps(installation), encoding="utf-8")
+            before_install = install_path.read_text(encoding="utf-8")
 
             result = upgrade_vault(vault, dry_run=True)
 
             self.assertTrue(result["dry_run"])
-            self.assertEqual(before_install, install_path.read_text())
+            self.assertEqual(before_install, install_path.read_text(encoding="utf-8"))
             self.assertIsNone(result["backup"])
             self.assertIsNone(result["doctor"])
             self.assertIn("MEMORY.md", result["files"]["preserved_customized"])
@@ -430,7 +430,7 @@ class FrameworkTests(unittest.TestCase):
             memory_path = vault / "MEMORY.md"
             memory_path.write_text("# My own memory\n", encoding="utf-8")
             result = init_vault(vault, force=True)
-            self.assertEqual("# My own memory\n", memory_path.read_text())
+            self.assertEqual("# My own memory\n", memory_path.read_text(encoding="utf-8"))
             self.assertIn(memory_path, result["preserved_customized"])
 
     def test_init_force_still_repairs_an_untouched_stale_file(self):
@@ -439,14 +439,14 @@ class FrameworkTests(unittest.TestCase):
             init_vault(vault)
             memory_path = vault / "MEMORY.md"
             install_path = vault / "config" / "installation.json"
-            installation = json.loads(install_path.read_text())
+            installation = json.loads(install_path.read_text(encoding="utf-8"))
             old_text = "# stale wording\n"
             memory_path.write_text(old_text, encoding="utf-8")
             installation.setdefault("scaffold_hashes", {})["MEMORY.md"] = hashlib.sha256(
                 old_text.encode("utf-8")).hexdigest()
-            install_path.write_text(json.dumps(installation))
+            install_path.write_text(json.dumps(installation), encoding="utf-8")
             result = init_vault(vault, force=True)
-            self.assertEqual(scaffold.FILES["MEMORY.md"], memory_path.read_text())
+            self.assertEqual(scaffold.FILES["MEMORY.md"], memory_path.read_text(encoding="utf-8"))
             self.assertIn(memory_path, result["updated"])
 
     def test_recommend_suggests_upgrade_for_a_stale_mindwell_vault(self):
@@ -454,9 +454,9 @@ class FrameworkTests(unittest.TestCase):
             vault = Path(tmp)
             init_vault(vault, profile="personal-ops")
             install_path = vault / "config" / "installation.json"
-            installation = json.loads(install_path.read_text())
+            installation = json.loads(install_path.read_text(encoding="utf-8"))
             installation["mindwell_version"] = "0.0.1"
-            install_path.write_text(json.dumps(installation))
+            install_path.write_text(json.dumps(installation), encoding="utf-8")
 
             advice = recommend(vault)
             self.assertTrue(advice["checks"]["installation"]["needs_upgrade"])
@@ -502,7 +502,7 @@ class FrameworkTests(unittest.TestCase):
             vault = Path(tmp)
             init_vault(vault, profile="personal-ops", automations="core")
             installation = json.loads(
-                (vault / "config/installation.json").read_text())
+                (vault / "config/installation.json").read_text(encoding="utf-8"))
             hashes = installation["scaffold_hashes"]
             self.assertIn("automations/prompts/weekday-startup.md", hashes)
             self.assertIn("automations/REGISTER-WITH-YOUR-AGENT.md", hashes)
@@ -521,9 +521,9 @@ class FrameworkTests(unittest.TestCase):
             old_template = "# Weekday second-brain startup (older release)\n"
             prompt_path.write_text(old_template, encoding="utf-8")
             install_path = vault / "config" / "installation.json"
-            installation = json.loads(install_path.read_text())
+            installation = json.loads(install_path.read_text(encoding="utf-8"))
             installation["scaffold_hashes"].pop(prompt_rel, None)
-            install_path.write_text(json.dumps(installation))
+            install_path.write_text(json.dumps(installation), encoding="utf-8")
 
             legacy = {prompt_rel: {hashlib.sha256(
                 old_template.encode("utf-8")).hexdigest()}}
@@ -568,7 +568,7 @@ class FrameworkTests(unittest.TestCase):
             self.assertTrue(plan_path.exists())
             self.assertIn("automations/plan.json", result["files"]["created"])
             self.assertEqual("not_registered",
-                             json.loads(plan_path.read_text())["registration_status"])
+                             json.loads(plan_path.read_text(encoding="utf-8"))["registration_status"])
 
     def _fake_backup(self, vault, stamp, files):
         from mindwell.config import backup_root
@@ -724,9 +724,9 @@ class FrameworkTests(unittest.TestCase):
             vault = Path(tmp) / "vault"
             init_vault(vault, profile="personal-ops", automations="core")
             plan_path = vault / "automations" / "plan.json"
-            plan = json.loads(plan_path.read_text())
+            plan = json.loads(plan_path.read_text(encoding="utf-8"))
             plan["registration_status"] = "registered"
-            plan_path.write_text(json.dumps(plan))
+            plan_path.write_text(json.dumps(plan), encoding="utf-8")
             with patch.object(updater, "run_vault_upgrade", return_value={"ok": True}):
                 result = updater.update(vault, source=str(src))
             self.assertTrue(any("re-register" in step for step in result["post_steps"]))
@@ -736,11 +736,11 @@ class FrameworkTests(unittest.TestCase):
             root = Path(tmp); shared = root / "shared"
             a, b = root / "a", root / "b"
             for vault in (a, b):
-                vault.mkdir(); (vault / "state.md").write_text("v1")
+                vault.mkdir(); (vault / "state.md").write_text("v1", encoding="utf-8")
             ca = Coordinator(a, root / "local-a", shared, "A")
             cb = Coordinator(b, root / "local-b", shared, "B")
             lease = ca.begin("state.md"); ca.verify(lease)
-            (a / "state.md").write_text("v2"); ca.commit(lease)
+            (a / "state.md").write_text("v2", encoding="utf-8"); ca.commit(lease)
             with self.assertRaises(CoordinationError): cb.begin("state.md")
 
 
